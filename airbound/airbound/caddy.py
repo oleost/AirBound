@@ -65,11 +65,17 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
     In relay mode a second, local-only listener takes traffic from frpc. It
     reads the PROXY protocol header frpc adds, so HA sees the real client.
     """
-    relay_host, relay_port = RELAY_LISTENER.split(":")
-    # The servers block must name the exact listener address, bind host included.
+    _relay_host, relay_port = RELAY_LISTENER.split(":")
+    # One site block for both listeners: two blocks for the same wildcard would be
+    # two certificate policies for one name, which Caddy refuses. The relay port
+    # isn't published outside the container, and PROXY headers are trusted only
+    # from frpc on 127.0.0.1. The servers block must name the exact listener address.
+    addresses = f"*.{settings.domain}:443"
+    if settings.mode == "relay":
+        addresses += f", *.{settings.domain}:{relay_port}"
     relay_server = (
         f"""
-	servers {relay_host}:{relay_port} {{
+	servers :{relay_port} {{
 		listener_wrappers {{
 			proxy_protocol {{
 				allow 127.0.0.1/32
@@ -101,9 +107,7 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
 	}}{relay_server}{bouncer}
 }}
 
-{_site(f"*.{settings.domain}:443", settings, ha_upstream, crowdsec)}"""
-    if settings.mode == "relay":
-        config += "\n" + _site(f"*.{settings.domain}:{relay_port}", settings, ha_upstream, crowdsec, bind=relay_host)
+{_site(addresses, settings, ha_upstream, crowdsec)}"""
     return config
 
 

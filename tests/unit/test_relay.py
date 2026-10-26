@@ -45,9 +45,9 @@ def test_frpc_config_tunnels_to_proxy_protocol_listener():
 def test_caddy_adds_local_relay_listener_only_in_relay_mode():
     relay = render_caddyfile(RELAY, "homeassistant:80")
     assert "proxy_protocol" in relay
-    assert "servers 127.0.0.1:8444 {" in relay  # must match the bound listener exactly
-    assert "*.example.com:8444 {" in relay
-    assert "bind 127.0.0.1" in relay
+    assert "servers :8444 {" in relay  # must match the listener address exactly
+    assert "*.example.com:443, *.example.com:8444 {" in relay  # one site: one certificate policy
+    assert relay.count("dns cloudflare") == 1
     direct = render_caddyfile(Settings(domain="example.com", hostname="h", cloudflare_token="t", mode="direct"), "homeassistant:80")
     assert "proxy_protocol" not in direct
     assert "8444" not in direct
