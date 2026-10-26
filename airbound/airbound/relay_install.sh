@@ -70,9 +70,26 @@ systemctl daemon-reload
 systemctl enable airbound-relay >/dev/null 2>&1
 systemctl restart airbound-relay
 
+# Open the two ports in whichever firewall the server uses.
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow "$CONTROL_PORT/tcp" >/dev/null
   ufw allow "$PUBLIC_PORT/tcp" >/dev/null
+elif systemctl is-active --quiet firewalld 2>/dev/null; then
+  # Oracle Linux, Rocky, Fedora
+  firewall-cmd --quiet --permanent --add-port="$CONTROL_PORT/tcp" --add-port="$PUBLIC_PORT/tcp"
+  firewall-cmd --quiet --reload
+elif command -v iptables >/dev/null 2>&1 && iptables -S INPUT 2>/dev/null | grep -q -- "-j REJECT"; then
+  # Oracle Cloud's Ubuntu images: iptables ends INPUT with a REJECT rule, so
+  # the new rules go first, then get saved so they survive a reboot.
+  for PORT in "$CONTROL_PORT" "$PUBLIC_PORT"; do
+    iptables -C INPUT -p tcp --dport "$PORT" -m state --state NEW -j ACCEPT 2>/dev/null \
+      || iptables -I INPUT 1 -p tcp --dport "$PORT" -m state --state NEW -j ACCEPT
+  done
+  if command -v netfilter-persistent >/dev/null 2>&1; then
+    netfilter-persistent save >/dev/null 2>&1
+  elif [ -d /etc/iptables ]; then
+    iptables-save > /etc/iptables/rules.v4
+  fi
 fi
 
 sleep 1

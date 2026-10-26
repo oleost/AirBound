@@ -305,7 +305,7 @@ steps.relay = () => {
   else if (view.check)
     check = `<div class="notice warn">
       <p><b>AirBound can't reach the relay yet.</b> Check that the command finished with "AirBound relay is running".</p>
-      <p class="small">If your provider has a firewall in its web console, allow TCP ports ${r?.control_port ?? 7000} and ${r?.public_port ?? 443} there too.</p>
+      <p class="small">If your provider has a firewall in its web console, allow TCP ports ${r?.control_port ?? 7000} and ${r?.public_port ?? 443} there too. On Oracle Cloud that's an ingress rule in the network's <b>Security List</b> (source 0.0.0.0/0).</p>
     </div>`;
   return frame(
     "relay",
@@ -313,7 +313,8 @@ steps.relay = () => {
     <p class="lead">This takes about 5 minutes, and you only do it once.</p>
     <div class="card">
       <h2>1. Get a server</h2>
-      <p>Rent the smallest Linux server (Ubuntu or Debian) from any provider. One processor and 512 MB of memory is plenty.</p>
+      <p>Rent the smallest Linux server (Ubuntu or Debian) from any provider. One processor and 512 MB of memory is plenty. Free tiers such as Oracle Cloud's Always Free work too.</p>
+      <p class="muted small">In the provider's own firewall (on Oracle Cloud: the <b>Security List</b>), allow incoming TCP on ports 443 and 7000.</p>
     </div>
     <div class="card">
       <h2>2. Run this command on the server</h2>
