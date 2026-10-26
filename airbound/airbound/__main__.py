@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from pathlib import Path
 
 from aiohttp import ClientSession, web
 
@@ -21,6 +22,7 @@ from .supervisor import Supervisor, SupervisorError
 from .web import Panel
 
 _LOGGER = logging.getLogger("airbound")
+MQTT_MIGRATED = Path("/data/mqtt_migrated")
 
 
 async def main() -> None:
@@ -43,13 +45,17 @@ async def main() -> None:
     slug = (await supervisor.get("/addons/self/info")).get("slug", "")
     broker = Mqtt(broker_config, slug) if broker_config else None
     if broker:
-        # Plain REST states from before MQTT must be gone before discovery, or
-        # Home Assistant gives the new entities IDs ending in _2.
-        for key in ENTITIES:
-            try:
-                await supervisor.core_delete(f"/states/{entity_id(key)}")
-            except SupervisorError:
-                pass
+        # Once, on the switch from REST to MQTT: plain REST states must be gone
+        # before discovery, or Home Assistant gives the new entities IDs ending
+        # in _2. Never again afterwards: by then the IDs belong to the MQTT
+        # entities, and deleting their state blanks them until a value changes.
+        if not MQTT_MIGRATED.exists():
+            for key in ENTITIES:
+                try:
+                    await supervisor.core_delete(f"/states/{entity_id(key)}")
+                except SupervisorError:
+                    pass
+            MQTT_MIGRATED.touch()
         broker.start()
     else:
         _LOGGER.info("No MQTT broker found; sensors go through the REST API instead")

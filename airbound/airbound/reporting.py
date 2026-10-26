@@ -59,7 +59,6 @@ class Reporter:
         self._crowdsec = crowdsec
         self._certwatch = certwatch
         self._mqtt = broker
-        self._rest_cleaned = False
         self._state = self._load()
         self._tasks: set[asyncio.Task] = set()
         self._problems: list[str] = []
@@ -146,8 +145,6 @@ class Reporter:
     async def _set(self, key: str, state, **attributes) -> None:
         """One sensor, by MQTT when connected, else as a plain REST state."""
         if self._mqtt and self._mqtt.connected:
-            if not self._rest_cleaned:
-                await self._remove_rest_states()
             await self._mqtt.set(key, state, attributes)
             return
         component, name, extra = mqtt.ENTITIES[key]
@@ -155,12 +152,6 @@ class Reporter:
             f"/states/{mqtt.entity_id(key)}",
             {"state": "unknown" if state is None else state, "attributes": {"friendly_name": f"AirBound {name.lower()}", **extra, **attributes}},
         )
-
-    async def _remove_rest_states(self) -> None:
-        """Plain states from before MQTT would clash with the MQTT entities' IDs."""
-        for key in mqtt.ENTITIES:
-            await self._supervisor.core_delete(f"/states/{mqtt.entity_id(key)}")
-        self._rest_cleaned = True
 
     async def _publish_counters(self) -> None:
         await self._set("refused_logins", self._state["refused"])
