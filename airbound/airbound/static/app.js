@@ -123,12 +123,14 @@ async function go(page) {
 
 const stepById = (id) => state.steps.find((s) => s.id === id);
 
-// The next step that can be opened, or the overview once everything is live.
+// The next step that can be opened. When everything later is locked, the first
+// step that still needs work (it's what unlocks the rest), or the overview once live.
 function nextPage() {
   const index = state.steps.findIndex((s) => s.id === current);
   const later = state.steps.slice(index + 1).find((s) => !s.locked);
   if (later) return later;
-  return state.settings.live ? { id: "overview", title: "Overview" } : null;
+  if (state.settings.live) return { id: "overview", title: "Overview" };
+  return state.steps.find((s) => !s.locked && !s.done && s.id !== current) || null;
 }
 
 function previousPage() {
@@ -350,6 +352,11 @@ steps.relay = () => {
   const r = view.relay;
   let check = "";
   if (view.checking) check = '<p><span class="spinner"></span> Checking…</p>';
+  else if (view.check && !view.check.public)
+    check = `<div class="notice warn">
+      <p><b><span class="mono">${esc(view.check.ip)}</span> is an address on a private network.</b> Your phone can't reach it from outside, so AirBound can't point your domain at it.</p>
+      <p>Enter the server's <b>public</b> IP address instead. The install command prints it at the end ("enter this address").</p>
+    </div>`;
   else if (view.check?.reachable)
     check = `<div class="notice good"><p>AirBound can reach the relay at <span class="mono">${esc(view.check.host)}</span>.</p></div>`;
   else if (view.check)
@@ -374,6 +381,7 @@ steps.relay = () => {
         <button data-action="copy" data-text="${esc(r?.command ?? "")}">${view.copied ? "Copied" : "Copy command"}</button>
         <button class="link" data-action="relay-new-key">Make a new key</button>
       </div>
+      <p class="small"><b>Set up a relay before?</b> Run the command again on the same server. It updates the relay to this key.</p>
       <p class="muted small">It installs the relay, opens TCP ports ${r?.public_port ?? 443} and ${r?.control_port ?? 7000} in the server's firewall and prints the server's address. The command contains a secret key, so don't share it.</p>
     </div>
     <div class="card">
@@ -384,7 +392,7 @@ steps.relay = () => {
       ${check}
       <div class="actions">
         <button class="${view.check?.reachable ? "" : "primary"}" data-action="check-relay" ${view.checking ? "disabled" : ""}>Check connection</button>
-        ${view.check?.reachable ? continueButton() : view.check ? '<button data-action="next">Continue anyway</button>' : ""}
+        ${view.check?.reachable && view.check.public ? continueButton() : view.check?.public ? '<button data-action="next">Continue anyway</button>' : ""}
       </div>
     </div>`
   );

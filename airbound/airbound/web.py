@@ -185,7 +185,8 @@ class Panel:
         reachable = await network.port_open(ip, self._store.settings.relay_control_port)
         if host != self._store.settings.relay_host:
             self._store.update(relay_host=host, live=False)
-        return web.json_response({"host": host, "ip": ip, "reachable": reachable})
+        public = ipaddress.ip_address(ip).is_global
+        return web.json_response({"host": host, "ip": ip, "reachable": reachable, "public": public})
 
     async def relay_new_key(self, _request: web.Request) -> web.Response:
         self._store.update(relay_token=relay.new_token(), live=False)
