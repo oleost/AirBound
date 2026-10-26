@@ -9,7 +9,7 @@ from pathlib import Path
 import segno
 from aiohttp import ClientSession, web
 
-from . import checks, ha_settings, network, portmap, relay, steps, users
+from . import checks, ha_settings, hosted, network, portmap, relay, steps, users
 from .caddy import Caddy
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
@@ -34,7 +34,7 @@ async def ingress_only(request: web.Request, handler):
 async def friendly_errors(request: web.Request, handler):
     try:
         return await handler(request)
-    except CloudflareError as err:
+    except (CloudflareError, hosted.HostedError) as err:
         return web.json_response({"error": str(err)}, status=400)
 
 
@@ -84,6 +84,8 @@ class Panel:
         r.add_get("/api/relay", self.relay_info)
         r.add_post("/api/relay", self.relay_host)
         r.add_post("/api/relay/new-key", self.relay_new_key)
+        r.add_get("/api/hosted", self.hosted_status)
+        r.add_post("/api/hosted/start", self.hosted_start)
         r.add_get("/api/ha-settings", self.ha_settings_status)
         r.add_post("/api/ha-settings/apply", self.ha_settings_apply)
         r.add_post("/api/ha-settings/confirm", self.ha_settings_confirm)
@@ -150,14 +152,14 @@ class Panel:
 
     async def connection(self, request: web.Request) -> web.Response:
         mode = (await request.json()).get("mode")
-        if mode not in ("direct", "relay"):
+        if mode not in ("direct", "relay", "hosted"):
             raise web.HTTPBadRequest()
         settings = self._store.settings
         changes: dict = {"mode": mode}
         if mode != settings.mode:
             changes["live"] = False  # the address has to point somewhere else now
             changes["router_done"] = False
-            if mode == "relay":
+            if mode in ("relay", "hosted"):
                 changes["external_port"] = 443  # the relay has port 443 to itself
         if mode == "relay" and not settings.relay_token:
             changes["relay_token"] = relay.new_token()
@@ -192,6 +194,51 @@ class Panel:
         relay.ensure_pki(renew=True)
         self._store.update(relay_token=relay.new_token(), live=False)
         return await self.relay_info(_request)
+
+    async def hosted_start(self, _request: web.Request) -> web.Response:
+        """A new link request: the person opens the link and logs in with Patreon."""
+        link = await hosted.start_link(self._session, self._store.settings.install_id)
+        self._store.update(hosted_claim=link["claim"], hosted_poll=link["poll"], hosted_code=link["code"])
+        return await self.hosted_status(_request)
+
+    async def hosted_status(self, _request: web.Request) -> web.Response:
+        """Where linking stands. Picks up the key once the person has logged in."""
+        settings = self._store.settings
+        result = {"linked": bool(settings.hosted_key and settings.tls == "hosted"), "fqdn": settings.fqdn if settings.tls == "hosted" else ""}
+        if not settings.hosted_claim:
+            return web.json_response({**result, "state": "linked" if result["linked"] else "idle"})
+        answer = await hosted.poll_link(self._session, settings.hosted_claim, settings.hosted_poll)
+        state = answer.get("state")
+        if state == "approved":
+            device = answer["device"]
+            new_fqdn = f"{device['hostname']}.{device['domain']}"
+            if new_fqdn != settings.fqdn or settings.tls != "hosted":
+                await self._caddy.stop()
+                self._store.update(live=False)
+            self._store.update(
+                hosted_device=device["id"],
+                hosted_key=device["key"],
+                domain=device["domain"],
+                hostname=device["hostname"],
+                tls="hosted",
+                hosted_claim="",
+                hosted_poll="",
+                hosted_code="",
+            )
+            return web.json_response({"linked": True, "fqdn": new_fqdn, "state": "linked"})
+        if state in ("expired", "delivered"):
+            # "delivered" without our having stored the key means it was lost; start over.
+            self._store.update(hosted_claim="", hosted_poll="", hosted_code="")
+            return web.json_response({**result, "state": "expired" if not result["linked"] else "linked"})
+        return web.json_response(
+            {
+                **result,
+                "state": state,
+                "code": settings.hosted_code,
+                "link_url": f"{hosted.SERVICE}/link/{settings.hosted_claim}",
+                "join_url": answer.get("join_url", ""),
+            }
+        )
 
     async def cloudflare_token(self, request: web.Request) -> web.Response:
         token = ((await request.json()).get("token") or "").strip()

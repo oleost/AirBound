@@ -1,9 +1,10 @@
 """Which setup steps are done, which can be opened, and a one-line summary of each.
 
-Steps unlock by what they depend on, not strictly in order: the domain, the
-connection method, Home Assistant's settings and the users can be done in any
-order, going live needs all of them, and the router and phone steps need a
-live address to test against.
+The connection method comes first, because it decides which steps follow: the
+hosted relay needs a Patreon login instead of a domain, a relay server needs
+setting up, and only the direct route needs the router. After that, steps
+unlock by what they depend on: going live needs everything before it, and the
+router and phone steps need a live address to test against.
 """
 
 from __future__ import annotations
@@ -11,11 +12,12 @@ from __future__ import annotations
 import ipaddress
 from dataclasses import asdict, dataclass
 
-from .settings import Settings
+from .settings import MODE_STEPS, Settings
 
 TITLES = {
-    "cloudflare": "Your domain",
     "connection": "How to connect",
+    "cloudflare": "Your domain",
+    "hosted": "Your AirBound address",
     "relay": "Relay server",
     "ha_settings": "Home Assistant settings",
     "users": "Two-step login",
@@ -45,9 +47,11 @@ def _is_public(host: str) -> bool:
 def compute(settings: Settings, http_ok: bool, blocking: list[str], people: int) -> list[Step]:
     s = settings
     relay = s.mode == "relay"
+    hosted = s.mode == "hosted"
     done = {
+        "connection": s.mode in ("direct", "relay", "hosted"),
         "cloudflare": bool(s.cloudflare_token and s.fqdn and s.tls == "cloudflare"),
-        "connection": s.mode in ("direct", "relay"),
+        "hosted": hosted and bool(s.hosted_key and s.fqdn and s.tls == "hosted"),
         "relay": relay and bool(s.relay_host) and _is_public(s.relay_host),
         "ha_settings": http_ok,
         "users": not blocking,
@@ -56,14 +60,19 @@ def compute(settings: Settings, http_ok: bool, blocking: list[str], people: int)
         "devices": s.devices_done,
     }
     needs = {
+        "cloudflare": ["connection"],
+        "hosted": ["connection"],
         "relay": ["connection"],
-        "go_live": ["cloudflare", "connection", "ha_settings", "users"] + (["relay"] if relay else []),
+        "go_live": ["connection"]
+        + [n for n in ("cloudflare", "hosted", "relay") if s.mode in MODE_STEPS[n]]
+        + ["ha_settings", "users"],
         "router": ["go_live"],
         "devices": ["go_live"],
     }
     summaries = {
+        "connection": {"relay": "Through your relay server", "direct": "Through your router", "hosted": "Through AirBound's hosted relay"}.get(s.mode, ""),
         "cloudflare": s.fqdn if done["cloudflare"] else "",
-        "connection": {"relay": "Through your relay server", "direct": "Through your router"}.get(s.mode, ""),
+        "hosted": s.fqdn if done["hosted"] else "",
         "relay": s.relay_host if done["relay"] else "",
         "ha_settings": "Sees visitors' addresses, blocks repeated failed logins" if http_ok else "",
         "users": (f"{people} {'person' if people == 1 else 'people'}, all set" if not blocking else ""),
@@ -71,12 +80,10 @@ def compute(settings: Settings, http_ok: bool, blocking: list[str], people: int)
         "router": (f"TCP port {s.external_port} forwarded" if done["router"] else ""),
         "devices": "Address ready for the app and browsers" if done["devices"] else "",
     }
-    order = [x for x in TITLES if not (x == "relay" and not relay) and not (x == "router" and relay)]
+    order = [x for x in TITLES if x not in MODE_STEPS or s.mode in MODE_STEPS[x]]
     steps = []
     for step_id in order:
         missing = [TITLES[n] for n in needs.get(step_id, []) if not done[n]]
-        if step_id == "relay" and not relay:
-            missing = [TITLES["connection"]]
         steps.append(
             Step(
                 id=step_id,

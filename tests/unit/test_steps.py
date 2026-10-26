@@ -8,26 +8,41 @@ def by_id(steps):
     return {s.id: s for s in steps}
 
 
-def test_fresh_install_opens_welcome_and_locks_go_live():
+def test_fresh_install_opens_welcome_and_starts_with_the_connection_choice():
     steps = compute(Settings(), http_ok=False, blocking=["ola"], people=1)
     s = by_id(steps)
     assert landing(Settings(), steps) == "welcome"
-    assert not s["cloudflare"].locked and not s["users"].locked  # can be done in any order
+    assert steps[0].id == "connection"  # the choice decides which steps follow
+    assert "cloudflare" not in s and "hosted" not in s and "router" not in s
+    assert not s["users"].locked  # can be done before choosing
     assert s["go_live"].locked
-    assert s["go_live"].reason == "Needs: Your domain, How to connect, Home Assistant settings, Two-step login"
+    assert s["go_live"].reason == "Needs: How to connect, Home Assistant settings, Two-step login"
     assert s["devices"].locked and s["devices"].reason == "Needs: Go live"
 
 
 def test_relay_mode_shows_relay_step_not_router():
     steps = compute(Settings(mode="relay"), http_ok=True, blocking=[], people=1)
     ids = [s.id for s in steps]
-    assert "relay" in ids and "router" not in ids
+    assert ids[:3] == ["connection", "cloudflare", "relay"]
+    assert "router" not in ids and "hosted" not in ids
     assert by_id(steps)["go_live"].reason == "Needs: Your domain, Relay server"
 
 
 def test_direct_mode_shows_router_step_not_relay():
     ids = [s.id for s in compute(Settings(mode="direct"), http_ok=True, blocking=[], people=1)]
-    assert "router" in ids and "relay" not in ids
+    assert "router" in ids and "relay" not in ids and "hosted" not in ids
+
+
+def test_hosted_mode_needs_no_domain_relay_or_router():
+    steps = compute(Settings(mode="hosted"), http_ok=True, blocking=[], people=1)
+    ids = [s.id for s in steps]
+    assert ids == ["connection", "hosted", "ha_settings", "users", "go_live", "devices"]
+    assert by_id(steps)["go_live"].reason == "Needs: Your AirBound address"
+    linked = Settings(mode="hosted", tls="hosted", domain="airbound.dev", hostname="x7k2", hosted_key="k")
+    s = by_id(compute(linked, http_ok=True, blocking=[], people=1))
+    assert s["hosted"].done and s["hosted"].summary == "x7k2.airbound.dev"
+    assert s["connection"].summary == "Through AirBound's hosted relay"
+    assert not s["go_live"].locked
 
 
 def test_private_relay_address_does_not_count_as_done():

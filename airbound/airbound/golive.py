@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 
 from aiohttp import ClientSession
 
-from . import network, portmap, relay
+from . import hosted, network, portmap, relay
 from .caddy import Caddy
 from .cloudflare import Cloudflare, CloudflareError
 from .relay import Frpc
@@ -56,9 +56,17 @@ class GoLive:
         if settings.tls == "cloudflare":
             target = "your relay server" if relay else "your home"
             self.tasks.append(Task("dns", f"Point {settings.fqdn} to {target}"))
-        self.tasks += [Task("proxy", "Start the secure proxy"), Task("certificate", "Get a certificate")]
-        if relay:
-            self.tasks.append(Task("relay", "Connect to your relay server"))
+        if settings.mode == "hosted":
+            # The certificate is checked through the relay, so the tunnel comes first.
+            self.tasks += [
+                Task("proxy", "Start the secure proxy"),
+                Task("relay", "Connect to AirBound's hosted relay"),
+                Task("certificate", "Get a certificate"),
+            ]
+        else:
+            self.tasks += [Task("proxy", "Start the secure proxy"), Task("certificate", "Get a certificate")]
+            if relay:
+                self.tasks.append(Task("relay", "Connect to your relay server"))
         self._running = asyncio.create_task(self._run())
 
     async def _run(self) -> None:
@@ -100,18 +108,25 @@ class GoLive:
 
     async def _proxy(self, task: Task) -> None:
         await self._caddy.apply(self._store.settings, self._ha_upstream)
-        if self._store.settings.mode != "relay":
+        if self._store.settings.mode not in ("relay", "hosted"):
             await self._frpc.stop()
 
     async def _relay(self, task: Task) -> None:
-        await self._frpc.apply(self._store.settings)
+        settings = self._store.settings
+        host = hosted.RELAY_HOST if settings.mode == "hosted" else settings.relay_host
+        await self._frpc.apply(settings)
         status = {}
         for _ in range(RELAY_TIMEOUT // 2):
             status = await self._frpc.status(self._session)
             if status["state"] == "connected":
-                task.detail = f"Connected to {self._store.settings.relay_host}"
+                task.detail = f"Connected to {host}"
                 return
             await asyncio.sleep(2)
+        if settings.mode == "hosted":
+            raise RuntimeError(
+                relay.explain(status.get("error", ""))
+                or f"AirBound couldn't reach the hosted relay at {host}. Check that Home Assistant has internet access, then try again."
+            )
         raise RuntimeError(
             relay.explain(status.get("error", ""))
             or f"AirBound couldn't reach the relay at {self._store.settings.relay_host}. "
@@ -126,6 +141,8 @@ class GoLive:
                 task.detail = "Valid certificate for your domain"
                 return
             await asyncio.sleep(3)
+        if settings.mode == "hosted":
+            raise RuntimeError("No certificate after 3 minutes. Let's Encrypt may be busy; try again in a few minutes.")
         raise RuntimeError(
             "No certificate after 3 minutes. Check that the Cloudflare token can edit DNS for this domain, then try again."
         )

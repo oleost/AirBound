@@ -286,6 +286,17 @@ code, .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-si
   word-break: break-all;
 }
 
+/* The link code, compared with the one on the hosted relay's page. */
+.code-box {
+  font: 600 28px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 4px;
+  text-align: center;
+  padding: 12px;
+  margin: 8px 0 4px;
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+}
+
 .choice.chosen { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .choice-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .choice-head h2 { margin: 0; }

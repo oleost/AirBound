@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import datetime
 import ipaddress
 import socket
 from dataclasses import asdict, dataclass
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from . import network, relay, users
+from . import hosted, network, relay, users
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
@@ -117,6 +118,15 @@ async def check_certificate(settings: Settings) -> Check:
 
 
 async def check_dns(settings: Settings, session: ClientSession) -> Check:
+    if settings.mode == "hosted":
+        current = await relay.resolve_ipv4(hosted.RELAY_HOST)
+        try:
+            resolved = {info[4][0] for info in socket.getaddrinfo(settings.fqdn, 443, socket.AF_INET)}
+        except OSError:
+            resolved = set()
+        if current and current in resolved:
+            return Check("dns", "Address", True, f"{settings.fqdn} points to AirBound's hosted relay.")
+        return Check("dns", "Address", False, f"{settings.fqdn} doesn't point to AirBound's hosted relay right now. This is fixed on the relay's side; try again later.")
     relay_mode = settings.mode == "relay"
     current = await relay.resolve_ipv4(settings.relay_host) if relay_mode else await network.public_ip(session)
     target = "your relay server" if relay_mode else "your home"
@@ -139,6 +149,13 @@ async def check_dns(settings: Settings, session: ClientSession) -> Check:
 
 async def check_relay(settings: Settings, frpc: relay.Frpc, session: ClientSession) -> Check:
     status = await frpc.status(session)
+    if settings.mode == "hosted":
+        if status["state"] == "connected":
+            return Check("relay", "Hosted relay", True, "Connected to AirBound's hosted relay. Your router needs no open ports.")
+        detail = relay.explain(status["error"]) or (
+            "AirBound can't reach the hosted relay right now. It keeps trying by itself; check that Home Assistant has internet access."
+        )
+        return Check("relay", "Hosted relay", False, detail)
     if status["state"] == "connected":
         return Check("relay", "Relay server", True, f"Connected to {settings.relay_host}. Your router needs no open ports.")
     detail = relay.explain(status["error"]) or (
@@ -174,6 +191,10 @@ async def check_certificate_lock(settings: Settings, session: ClientSession, cer
             f"A certificate for {settings.fqdn} was issued by {issuers}, and AirBound didn't order it. "
             "Someone may be trying to intercept your traffic. Turn off remote access until you know why.",
         )
+    if settings.tls == "hosted":
+        if certwatch and certwatch.checked:
+            return Check("cert_lock", title, True, "Certificate logs show no certificate for this address except the ones this Home Assistant made.")
+        return Check("cert_lock", title, True, "AirBound watches the public certificate logs for this address.")
     try:
         locked = await Cloudflare(session, settings.cloudflare_token).certificates_locked(settings.zone_id, settings.fqdn)
     except CloudflareError:
@@ -189,6 +210,38 @@ async def check_certificate_lock(settings: Settings, session: ClientSession, cer
         )
     watched = " Certificate logs show nothing unexpected." if certwatch and certwatch.checked else ""
     return Check("cert_lock", title, True, f"Only AirBound can get a certificate for this address.{watched}")
+
+
+async def check_membership(settings: Settings, session: ClientSession) -> Check | None:
+    """The hosted relay works while the Patreon membership is active."""
+    title = "Membership"
+    try:
+        info = await hosted.account(session, settings.hosted_key)
+    except hosted.HostedError:
+        return None  # the website being unreachable says nothing about the membership
+    state = info.get("state")
+    if state == "active":
+        return Check("membership", title, True, "Your AirBound membership is active.")
+    if state == "grace":
+        until = info.get("grace_until")
+        when = f" until {datetime.datetime.fromtimestamp(until, datetime.UTC):%d %B}" if until else ""
+        return Check(
+            "membership",
+            title,
+            False,
+            f"Patreon couldn't renew your membership, perhaps because of a card problem. Remote access keeps working{when}; "
+            f"update your payment on Patreon: {info.get('manage_url', '')}",
+        )
+    if state == "expired":
+        return Check(
+            "membership",
+            title,
+            False,
+            f"Your membership has ended, so the hosted relay is off. Renew it on Patreon: {info.get('join_url', '')}",
+            "Link again",
+            "hosted",
+        )
+    return Check("membership", title, False, "The hosted relay doesn't know this Home Assistant any more. Link it again.", "Link again", "hosted")
 
 
 async def run_all(
@@ -211,10 +264,14 @@ async def run_all(
     if settings.live:
         if crowdsec:
             results.append(await check_protection(crowdsec))
-        if settings.mode == "relay":
+        if settings.mode == "hosted":
+            membership = await check_membership(settings, session)
+            if membership:
+                results.append(membership)
+        if settings.mode in ("relay", "hosted"):
             results.append(await check_relay(settings, frpc, session))
         results.append(await check_certificate(settings))
-        if settings.tls == "cloudflare":
+        if settings.tls in ("cloudflare", "hosted"):
             results.append(await check_dns(settings, session))
             results.append(await check_certificate_lock(settings, session, certwatch))
     return results

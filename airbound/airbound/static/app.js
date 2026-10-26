@@ -68,6 +68,7 @@ const enter = {
     }, 3000),
   users: () => load(api("users"), (d) => Object.assign(view, d)),
   relay: () => load(api("relay"), (d) => (view.relay = d)),
+  hosted: () => followHosted(),
   go_live: () =>
     load(api("go-live"), (d) => {
       view.progress = d;
@@ -103,6 +104,16 @@ function followGoLive() {
     render();
     return view.progress.busy;
   }, 1500);
+}
+
+// While a link request waits for the Patreon login, check every few seconds.
+function followHosted() {
+  poll(async () => {
+    view.hosted = await api("hosted");
+    if (view.hosted.state === "linked") await refreshState();
+    render();
+    return ["pending", "needs_membership"].includes(view.hosted.state);
+  }, 3000);
 }
 
 // Reloads step status after anything that may have finished or unlocked a step.
@@ -218,17 +229,17 @@ steps.welcome = () =>
     `<h1>Reach your Home Assistant from anywhere</h1>
     <p class="lead">AirBound gives Home Assistant its own secure web address. It works in the Home Assistant app and in any browser, at home, at work or on a borrowed computer. No subscription and no VPN app.</p>
     <div class="card">
-      <h2>You'll need</h2>
+      <h2>You'll need one of these</h2>
       <ul class="plain">
-        <li>Your own domain, managed by Cloudflare (a free Cloudflare account is enough)</li>
-        <li>Either a small rented server (about €4–5 a month), so nothing changes on your router, or access to your router's settings. AirBound walks you through both.</li>
-        <li>About 10 minutes</li>
+        <li><b>The easiest:</b> an AirBound membership on Patreon for the hosted relay. Nothing to set up, and it starts with a 7-day free trial.</li>
+        <li><b>Or do it yourself, for free:</b> your own domain on Cloudflare, plus either a small rented server or access to your router's settings.</li>
       </ul>
+      <p class="muted small">Setting up takes about 5 minutes with the hosted relay, 10–15 on your own.</p>
       <h2>How it keeps your home safe</h2>
       <ul class="plain">
         <li>Everyone who logs in from outside needs a password <em>and</em> a code from an authenticator app.</li>
         <li>The address is random, and nothing else on your network is opened.</li>
-        <li>Your traffic is encrypted all the way to your home. Cloudflare only manages the address.</li>
+        <li>Your traffic is encrypted all the way to your home. Nobody in between can read it.</li>
         <li>Addresses that keep guessing passwords are blocked.</li>
       </ul>
     </div>
@@ -316,9 +327,9 @@ steps.connection = () => {
   const mode = state.settings.mode;
   const option = (value, title, pill, points, button) => `
     <div class="card choice ${mode === value ? "chosen" : ""}">
-      <div class="choice-head"><h2>${title}</h2><span class="pill ${value === "relay" ? "good" : "muted"}">${pill}</span></div>
+      <div class="choice-head"><h2>${title}</h2><span class="pill ${value === "hosted" ? "good" : "muted"}">${pill}</span></div>
       <ul class="plain">${points.map((p) => `<li>${p}</li>`).join("")}</ul>
-      <div class="actions"><button class="${mode === value || (!mode && value === "relay") ? "primary" : ""}" data-action="choose-mode" data-mode="${value}">${button}</button>
+      <div class="actions"><button class="${mode === value || (!mode && value === "hosted") ? "primary" : ""}" data-action="choose-mode" data-mode="${value}">${button}</button>
       ${mode === value ? '<span class="muted small">Your current choice</span>' : ""}</div>
     </div>`;
   return frame(
@@ -326,6 +337,17 @@ steps.connection = () => {
     `<h1>How should your phone reach Home Assistant?</h1>
     <p class="lead">Pick one. You can change it later.</p>
     ${errorBox(view.error)}
+    ${option(
+      "hosted",
+      "Through AirBound's hosted relay",
+      "Easiest",
+      [
+        'Nothing to set up: no domain, no server and no router changes. You get an address like <span class="mono">x7k2….airbound.dev</span>.',
+        "Needs an AirBound membership on Patreon (25 kr a month). It starts with a 7-day free trial, and you can cancel any time.",
+        "The relay can't read anything. The traffic stays encrypted all the way to your home, and the certificate is made by your own Home Assistant.",
+      ],
+      "Use the hosted relay"
+    )}
     ${option(
       "relay",
       "Through your own small server",
@@ -335,7 +357,7 @@ steps.connection = () => {
         "Costs about €4–5 a month from providers such as Hetzner, DigitalOcean or OVH. Setting it up is one command that AirBound gives you.",
         "The server can't read anything. The traffic stays encrypted all the way to your home.",
       ],
-      "Use a relay server"
+      "Use my own server"
     )}
     ${option(
       "direct",
@@ -397,6 +419,53 @@ steps.relay = () => {
         ${view.check?.reachable && view.check.public ? continueButton() : view.check?.public ? '<button data-action="next">Continue anyway</button>' : ""}
       </div>
     </div>`
+  );
+};
+
+steps.hosted = () => {
+  const h = view.hosted;
+  let body;
+  if (!h) body = '<p><span class="spinner"></span> Checking…</p>';
+  else if (h.state === "pending" || h.state === "needs_membership")
+    body = `
+      <div class="card">
+        <h2>1. Open the link page</h2>
+        <p>It opened in a new tab. If it didn't, use this button:</p>
+        <div class="actions"><a class="button primary" href="${esc(h.link_url)}" target="_blank" rel="noopener">Open the link page</a></div>
+        <h2>2. Check the code</h2>
+        <p>The page shows a code. It must be the same as this one:</p>
+        <div class="code-box">${esc(h.code)}</div>
+        <h2>3. Log in with Patreon</h2>
+        ${
+          h.state === "needs_membership"
+            ? `<div class="notice warn"><p><b>You're logged in, but the membership is missing.</b> Start the 7-day free trial on Patreon, then select <b>I've joined: check again</b> on the link page.</p>
+               <div class="actions"><a class="button" href="${esc(h.join_url)}" target="_blank" rel="noopener">Start the free trial on Patreon</a></div></div>`
+            : "<p>Log in on the link page. AirBound continues here by itself.</p>"
+        }
+        <p class="muted small"><span class="spinner"></span> Waiting for the login…</p>
+        <div class="actions"><button class="link" data-action="hosted-start">Start over with a new link</button></div>
+      </div>`;
+  else if (h.state === "linked")
+    body = `
+      <div class="card">
+        <div class="notice good"><p>Linked. This Home Assistant's address is:</p></div>
+        <div class="address">https://${esc(h.fqdn)}</div>
+        <div class="actions">${continueButton()}<button class="link" data-action="hosted-start">Link again</button></div>
+      </div>`;
+  else
+    body = `
+      <div class="card">
+        ${h.state === "expired" ? '<div class="notice warn"><p>The link expired before the login finished. Start again.</p></div>' : ""}
+        <p>You log in with Patreon on AirBound's website. New members start with a 7-day free trial on Patreon, and you can cancel any time.</p>
+        <p class="muted small">AirBound only learns your Patreon member id and whether the membership includes the relay, never your name, email address or card.</p>
+        ${errorBox(view.error)}
+        <div class="actions"><button class="primary" data-action="hosted-start" ${view.busy ? "disabled" : ""}>${view.busy ? '<span class="spinner"></span> Starting…' : "Log in with Patreon"}</button></div>
+      </div>`;
+  return frame(
+    "hosted",
+    `<h1>Get your AirBound address</h1>
+    <p class="lead">Link this Home Assistant to your AirBound membership. You get a private address on airbound.dev.</p>
+    ${body}`
   );
 };
 
@@ -519,7 +588,9 @@ steps.go_live = () => {
       ${tasks ? `<div style="margin-top:16px">${tasks}</div>` : ""}
       ${
         done
-          ? s.mode === "relay"
+          ? s.mode === "hosted"
+            ? '<div class="notice good"><p>AirBound is live. Your phone reaches Home Assistant through AirBound&#39;s hosted relay, and your router needs no changes.</p></div>'
+            : s.mode === "relay"
             ? '<div class="notice good"><p>AirBound is live. Your phone reaches Home Assistant through your relay server, and your router needs no changes.</p></div>'
             : '<div class="notice good"><p>AirBound is running. One step left: your router has to let the traffic in.</p></div>'
           : ""
@@ -777,6 +848,23 @@ const actions = {
   async "choose-mode"(el) {
     state = await api("connection", { mode: el.dataset.mode });
     goNext();
+  },
+  async "hosted-start"() {
+    // Open the tab right away: browsers block tabs opened after waiting for the network.
+    const tab = window.open("", "_blank");
+    view.busy = true;
+    view.error = "";
+    render();
+    try {
+      view.hosted = await api("hosted/start", {});
+      if (tab) tab.location.href = view.hosted.link_url;
+      followHosted();
+    } catch (e) {
+      tab?.close();
+      view.error = e.message;
+    }
+    view.busy = false;
+    render();
   },
   "select-all"(el) {
     el.select();

@@ -75,8 +75,18 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
     """
     _relay_host, relay_port = RELAY_LISTENER.split(":")
     # {$VAR} is filled in when the config is loaded, so a new token applies on reload.
-    issuing = "local_certs" if settings.tls == "internal" else "acme_dns cloudflare {$CF_API_TOKEN}"
-    relay = settings.mode == "relay"
+    if settings.tls == "internal":
+        issuing = "local_certs"
+    elif settings.tls == "hosted":
+        # The hosted relay's domain isn't ours, so no DNS challenge: Let's Encrypt
+        # checks through the relay's TLS-ALPN path instead (port 80 isn't reachable).
+        issuing = "cert_issuer acme {\n\t\tdisable_http_challenge\n\t}"
+    else:
+        issuing = "acme_dns cloudflare {$CF_API_TOKEN}"
+    relay = settings.mode in ("relay", "hosted")
+    # Our own domain gets a wildcard, which keeps the hostname out of Certificate
+    # Transparency logs. On the hosted relay's domain only the exact name can be ours.
+    site = settings.fqdn if settings.tls == "hosted" else f"*.{settings.domain}"
     # The servers block must name the exact listener address.
     relay_server = (
         f"""
@@ -113,11 +123,11 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
 	}}{relay_server}{bouncer}
 }}
 
-{_site(f"*.{settings.domain}:443", settings, ha_upstream, crowdsec)}"""
+{_site(f"{site}:443", settings, ha_upstream, crowdsec)}"""
     if relay:
         # The relay port isn't published outside the container, and PROXY headers
         # are trusted only from frpc on 127.0.0.1.
-        config += "\n" + _site(f"*.{settings.domain}:{relay_port}", settings, ha_upstream, crowdsec, guard_forged=True)
+        config += "\n" + _site(f"{site}:{relay_port}", settings, ha_upstream, crowdsec, guard_forged=True)
     return config
 
 

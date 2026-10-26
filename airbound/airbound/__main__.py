@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import signal
 from pathlib import Path
 
@@ -33,6 +34,8 @@ async def main() -> None:
         store.update(live=False)
     if store.settings.live and not store.settings.mode:
         store.update(mode="direct")  # set up before relay mode existed
+    if not store.settings.install_id:
+        store.update(install_id=secrets.token_urlsafe(24))
     session = ClientSession()
     supervisor = Supervisor(session)
     ha_upstream = await supervisor.ha_upstream()
@@ -81,7 +84,7 @@ async def main() -> None:
     await crowdsec.start()
     if store.settings.live and store.settings.is_configured:
         await caddy.apply(store.settings, ha_upstream)
-        if store.settings.mode == "relay":
+        if store.settings.mode in ("relay", "hosted"):
             await frpc.apply(store.settings)
     else:
         _LOGGER.info("Not live yet: open AirBound in the Home Assistant sidebar to set it up")

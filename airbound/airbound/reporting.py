@@ -20,7 +20,7 @@ from aiohttp import ClientSession
 from cryptography import x509
 
 from . import checks, mqtt, network
-from .certwatch import CertWatch
+from .certwatch import CertWatch, own_public_keys
 from .crowdsec import CrowdSec
 from .relay import Frpc
 from .settings import Store
@@ -208,9 +208,18 @@ class Reporter:
     async def watch_certificates(self) -> bool:
         """Scan the CT logs; returns whether a scan actually ran."""
         settings = self._store.settings
-        if not (self._certwatch and settings.live and settings.tls == "cloudflare"):
+        if not (self._certwatch and settings.live and settings.tls in ("cloudflare", "hosted")):
             return False
-        found = await self._certwatch.scan(self._session, settings.domain, settings.fqdn)
+        own_keys = None
+        if settings.tls == "hosted":
+            # Keys of every certificate this Home Assistant got, including renewed-away ones.
+            known_keys = set(self._state.setdefault("own_keys", [])) | own_public_keys(settings.fqdn)
+            self._state["own_keys"] = sorted(known_keys)
+            self._save()
+            if not known_keys:
+                return False  # nothing to compare against before the first certificate
+            own_keys = known_keys
+        found = await self._certwatch.scan(self._session, settings.domain, settings.fqdn, own_keys)
         if found is None:
             return False
         known = set(self._state.setdefault("reported_certs", []))

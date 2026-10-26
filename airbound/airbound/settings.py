@@ -11,13 +11,18 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
 SETTINGS_FILE = Path("/data/settings.json")
-ALL_STEPS = ("welcome", "cloudflare", "connection", "relay", "ha_settings", "users", "go_live", "router", "devices", "overview", "done")
+ALL_STEPS = ("welcome", "connection", "cloudflare", "hosted", "relay", "ha_settings", "users", "go_live", "router", "devices", "overview", "done")
+MODE_STEPS = {  # steps only some connection modes have
+    "cloudflare": ("direct", "relay"),
+    "hosted": ("hosted",),
+    "relay": ("relay",),
+    "router": ("direct",),
+}
 
 
 def wizard_steps(mode: str) -> list[str]:
-    """The wizard's steps for a connection mode: relay mode needs no router step."""
-    skip = "router" if mode == "relay" else "relay"
-    return [s for s in ALL_STEPS if s != skip]
+    """The wizard's steps for a connection mode: only direct mode has a router step, and so on."""
+    return [s for s in ALL_STEPS if s not in MODE_STEPS or mode in MODE_STEPS[s]]
 
 
 HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -43,19 +48,25 @@ class Settings:
     zone_id: str = ""
     hostname: str = ""
     cloudflare_token: str = ""
-    tls: str = "cloudflare"  # "internal" is a self-signed certificate, for testing only
+    tls: str = "cloudflare"  # "hosted": certificate through the hosted relay; "internal": self-signed, for tests
     require_mfa: bool = True
     wizard_step: str = "welcome"
     live: bool = False
     public_ip: str = ""
     external_port: int = 443  # the public port: on the router (direct) or on the relay
-    mode: str = ""  # "direct" through the router, or "relay" through the user's own server
+    mode: str = ""  # "direct" through the router, "relay" through the user's own server, "hosted" through AirBound's
     relay_host: str = ""
     relay_token: str = ""
     relay_control_port: int = 7000
     port_mapping: str = ""  # "natpmp" or "upnp" when AirBound opened the router port itself
     router_done: bool = False  # the user confirmed the port forward works
     devices_done: bool = False  # the user has seen how to connect their phone
+    install_id: str = ""  # identifies this Home Assistant to the hosted relay, so relinking keeps the address
+    hosted_device: str = ""
+    hosted_key: str = ""  # the hosted relay's key for this Home Assistant
+    hosted_claim: str = ""  # a link request waiting for the Patreon login
+    hosted_poll: str = ""
+    hosted_code: str = ""
 
     @property
     def fqdn(self) -> str:
@@ -72,14 +83,17 @@ class Settings:
     def is_configured(self) -> bool:
         if not self.fqdn:
             return False
+        if self.tls == "hosted":
+            return bool(self.hosted_key)
         return self.tls == "internal" or bool(self.cloudflare_token)
 
     def public(self) -> dict:
         """What the web UI may see. Secrets are never sent back."""
         data = asdict(self)
-        data.pop("cloudflare_token")
-        data.pop("relay_token")
+        for secret in ("cloudflare_token", "relay_token", "hosted_key", "hosted_poll"):
+            data.pop(secret)
         data["has_token"] = bool(self.cloudflare_token)
+        data["has_hosted_key"] = bool(self.hosted_key)
         data["fqdn"] = self.fqdn
         data["url"] = self.url
         return data

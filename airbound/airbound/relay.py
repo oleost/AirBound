@@ -31,6 +31,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
+from . import hosted
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,6 +127,8 @@ def install_command(settings: Settings, pki: dict[str, str]) -> str:
 
 
 def render_frpc(settings: Settings) -> str:
+    if settings.mode == "hosted":
+        return render_hosted_frpc(settings)
     host, port = RELAY_LISTENER.split(":")
     admin_host, admin_port = ADMIN.split(":")
     return f"""serverAddr = "{settings.relay_host}"
@@ -147,6 +150,39 @@ type = "tcp"
 localIP = "{host}"
 localPort = {port}
 remotePort = {settings.external_port}
+transport.proxyProtocolVersion = "v2"
+"""
+
+
+def render_hosted_frpc(settings: Settings) -> str:
+    """The shared relay routes by name: an HTTPS proxy for this Home Assistant's own hostname.
+
+    The device id and key identify this Home Assistant to the relay's controller,
+    which only lets it publish its own hostname.
+    """
+    host, port = RELAY_LISTENER.split(":")
+    admin_host, admin_port = ADMIN.split(":")
+    return f"""serverAddr = "{hosted.RELAY_HOST}"
+serverPort = {hosted.RELAY_PORT}
+user = "{settings.hosted_device}"
+metadatas.key = "{settings.hosted_key}"
+auth.method = "token"
+auth.token = "{hosted.AUTH_TOKEN}"
+transport.tls.enable = true
+transport.tls.trustedCaFile = "{hosted.CA_FILE.as_posix()}"
+transport.tls.serverName = "{hosted.SERVER_NAME}"
+loginFailExit = false
+log.to = "console"
+log.level = "warn"
+webServer.addr = "{admin_host}"
+webServer.port = {admin_port}
+
+[[proxies]]
+name = "airbound"
+type = "https"
+customDomains = ["{settings.fqdn}"]
+localIP = "{host}"
+localPort = {port}
 transport.proxyProtocolVersion = "v2"
 """
 
@@ -176,7 +212,7 @@ class Frpc:
         FRPC_CONFIG.write_text(render_frpc(settings))
         os.chmod(FRPC_CONFIG, 0o600)
         self._process = await asyncio.create_subprocess_exec("frpc", "-c", str(FRPC_CONFIG))
-        _LOGGER.info("Relay client started for %s", settings.relay_host)
+        _LOGGER.info("Relay client started for %s", hosted.RELAY_HOST if settings.mode == "hosted" else settings.relay_host)
 
     async def stop(self) -> None:
         if self.running:
@@ -194,7 +230,7 @@ class Frpc:
                 data = await resp.json()
         except (ClientError, TimeoutError, ValueError):
             return {"state": "connecting", "error": ""}
-        for proxy in data.get("tcp", []):
+        for proxy in data.get("tcp", []) + data.get("https", []):
             if proxy.get("name") == "airbound":
                 if proxy.get("status") == "running":
                     return {"state": "connected", "error": ""}
@@ -205,6 +241,10 @@ class Frpc:
 def explain(error: str) -> str:
     """frp errors in words a person can act on."""
     lowered = error.lower()
+    if "membership ended" in lowered:
+        return "Your AirBound membership has ended. Renew it on Patreon to use the hosted relay again."
+    if "unknown device" in lowered:
+        return "The hosted relay doesn't know this Home Assistant any more. Link it again in the first steps."
     if "token" in lowered or "authorization" in lowered:
         return "The relay rejected AirBound's key. Run the install command on the server again."
     if "port" in lowered and ("used" in lowered or "not allowed" in lowered):
