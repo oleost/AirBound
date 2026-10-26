@@ -1,5 +1,5 @@
 name: AirBound
-version: "0.8.1"
+version: "0.9.0"
 slug: airbound
 description: "Work in progress, not ready for use: secure remote access to Home Assistant without a subscription"
 stage: experimental
@@ -14,6 +14,8 @@ ingress_port: 8099
 panel_icon: mdi:shield-lock-outline
 panel_title: AirBound
 homeassistant_api: true
+services:
+  - mqtt:want
 hassio_api: true
 hassio_role: manager
 map:

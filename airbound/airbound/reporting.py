@@ -1,10 +1,11 @@
 """Tells Home Assistant what AirBound sees: sensors, events and notifications.
 
-Everything goes through HA's REST API, so nothing has to be installed in HA:
-- sensors such as binary_sensor.airbound_remote_access and sensor.airbound_status
-- events (airbound_login, airbound_login_refused, airbound_login_failed) for automations
-- notifications for a login from a new address, a certificate about to expire,
-  and anything on the status page that turns red
+- Sensors: through MQTT discovery when a broker is available, so AirBound is a
+  device with real entities; otherwise as plain states through HA's REST API.
+- Events (airbound_login, airbound_login_refused, airbound_login_failed) for
+  automations, plus MQTT device triggers when MQTT is used.
+- Notifications for a login from a new address, a certificate about to expire,
+  and anything on the status page that turns red.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pathlib import Path
 from aiohttp import ClientSession
 from cryptography import x509
 
-from . import checks, network
+from . import checks, mqtt, network
 from .certwatch import CertWatch
 from .crowdsec import CrowdSec
 from .relay import Frpc
@@ -29,6 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 
 STATE_FILE = Path("/data/reporting.json")
 STATUS_INTERVAL = 300
+CONNECTION_INTERVAL = 60
+ACCESS_LOG = Path("/data/logs/access.log")
 CT_INTERVAL = 6 * 3600
 CERT_WARNING_DAYS = 14
 PREFIX = "airbound"
@@ -47,6 +50,7 @@ class Reporter:
     def __init__(
         self, store: Store, supervisor: Supervisor, session: ClientSession, frpc: Frpc, crowdsec: CrowdSec | None = None,
         certwatch: CertWatch | None = None,
+        broker: mqtt.Mqtt | None = None,
     ) -> None:
         self._store = store
         self._supervisor = supervisor
@@ -54,6 +58,8 @@ class Reporter:
         self._frpc = frpc
         self._crowdsec = crowdsec
         self._certwatch = certwatch
+        self._mqtt = broker
+        self._rest_cleaned = False
         self._state = self._load()
         self._tasks: set[asyncio.Task] = set()
         self._problems: list[str] = []
@@ -101,6 +107,8 @@ class Reporter:
                 self._save()
                 await self._event("login", {"username": username, "ip": ip, "new_address": new})
                 if new:
+                    await self._trigger("login_new_address", {"username": username, "ip": ip})
+                if new:
                     await self._notify("New remote login", remote_login_message(username, ip), f"login_{ip}")
             elif event == "refused":
                 self._state["refused"] += 1
@@ -118,6 +126,11 @@ class Reporter:
 
     async def _event(self, name: str, data: dict) -> None:
         await self._supervisor.core_post(f"/events/{PREFIX}_{name}", data)
+        await self._trigger(name, data)
+
+    async def _trigger(self, key: str, data: dict) -> None:
+        if self._mqtt and key in mqtt.TRIGGERS:
+            await self._mqtt.trigger(key, data)
 
     async def _notify(self, title: str, message: str, notification_id: str) -> None:
         await self._supervisor.core_post(
@@ -130,34 +143,34 @@ class Reporter:
             "/services/persistent_notification/dismiss", {"notification_id": f"{PREFIX}_{notification_id}"}
         )
 
-    async def _set(self, entity_id: str, state, **attributes) -> None:
-        await self._supervisor.core_post(f"/states/{entity_id}", {"state": state, "attributes": attributes})
+    async def _set(self, key: str, state, **attributes) -> None:
+        """One sensor, by MQTT when connected, else as a plain REST state."""
+        if self._mqtt and self._mqtt.connected:
+            if not self._rest_cleaned:
+                await self._remove_rest_states()
+            await self._mqtt.set(key, state, attributes)
+            return
+        component, name, extra = mqtt.ENTITIES[key]
+        await self._supervisor.core_post(
+            f"/states/{mqtt.entity_id(key)}",
+            {"state": "unknown" if state is None else state, "attributes": {"friendly_name": f"AirBound {name.lower()}", **extra, **attributes}},
+        )
+
+    async def _remove_rest_states(self) -> None:
+        """Plain states from before MQTT would clash with the MQTT entities' IDs."""
+        for key in mqtt.ENTITIES:
+            await self._supervisor.core_delete(f"/states/{mqtt.entity_id(key)}")
+        self._rest_cleaned = True
 
     async def _publish_counters(self) -> None:
-        await self._set(
-            f"sensor.{PREFIX}_refused_logins",
-            self._state["refused"],
-            friendly_name="AirBound logins refused (no MFA)",
-            icon="mdi:shield-alert",
-            state_class="total_increasing",
-        )
-        await self._set(
-            f"sensor.{PREFIX}_failed_logins",
-            self._state["failed"],
-            friendly_name="AirBound failed remote logins",
-            icon="mdi:account-alert",
-            state_class="total_increasing",
-        )
+        await self._set("refused_logins", self._state["refused"])
+        await self._set("failed_logins", self._state["failed"])
         last = self._state.get("last_login")
         await self._set(
-            f"sensor.{PREFIX}_last_remote_login",
-            last["at"] if last else "unknown",
-            friendly_name="AirBound last remote login",
-            device_class="timestamp",
-            icon="mdi:login",
-            username=(last or {}).get("username"),
-            ip=(last or {}).get("ip"),
+            "last_remote_login", last["at"] if last else None, username=(last or {}).get("username"), ip=(last or {}).get("ip")
         )
+        conn = self._state.get("last_connection")
+        await self._set("last_remote_connection", conn["at"] if conn else None, ip=(conn or {}).get("ip"))
 
     async def certificate_expiry(self) -> datetime.datetime | None:
         settings = self._store.settings
@@ -176,37 +189,12 @@ class Reporter:
         problems = [c for c in results if not c.ok]
         live = settings.live
         status = "Off" if not live else ("OK" if not problems else "Needs attention")
-        await self._set(
-            f"binary_sensor.{PREFIX}_remote_access",
-            "on" if live and not problems else "off",
-            friendly_name="AirBound remote access",
-            device_class="connectivity",
-            url=settings.url or None,
-            mode=settings.mode or None,
-        )
-        await self._set(
-            f"sensor.{PREFIX}_status",
-            status,
-            friendly_name="AirBound status",
-            icon="mdi:shield-check" if status == "OK" else "mdi:shield-alert",
-            problems=[f"{c.title}: {c.detail}" for c in problems],
-        )
+        await self._set("remote_access", "on" if live and not problems else "off", url=settings.url or None, mode=settings.mode or None)
+        await self._set("status", status, problems=[f"{c.title}: {c.detail}" for c in problems])
         expiry = await self.certificate_expiry() if live else None
-        await self._set(
-            f"sensor.{PREFIX}_certificate_expires",
-            expiry.isoformat() if expiry else "unknown",
-            friendly_name="AirBound certificate expires",
-            device_class="timestamp",
-            icon="mdi:certificate",
-        )
+        await self._set("certificate_expires", expiry.isoformat() if expiry else None)
         bans = await self._crowdsec.bans() if self._crowdsec else []
-        await self._set(
-            f"sensor.{PREFIX}_blocked_addresses",
-            len(bans),
-            friendly_name="AirBound blocked addresses",
-            icon="mdi:shield-lock",
-            addresses=[b["ip"] for b in bans][:50],
-        )
+        await self._set("blocked_addresses", len(bans), addresses=[b["ip"] for b in bans][:50])
         await self._publish_counters()
 
         # Notify once when something turns red, and clear it when it's fixed.
@@ -248,9 +236,25 @@ class Reporter:
             self._save()
         return True
 
+    async def track_connections(self) -> None:
+        """Update "Last remote connection" from Caddy's access log."""
+        settings = self._store.settings
+        if not (settings.live and ACCESS_LOG.exists()):
+            return
+        with ACCESS_LOG.open("rb") as log:
+            log.seek(0, 2)
+            log.seek(max(0, log.tell() - 65536))
+            tail = log.read().decode(errors="replace").splitlines()
+        found = last_connection(tail, settings.fqdn)
+        previous = self._state.get("last_connection") or {}
+        if found and found["at"] != previous.get("at"):
+            self._state["last_connection"] = found
+            self._save()
+            await self._set("last_remote_connection", found["at"], ip=found["ip"])
+
     async def run(self) -> None:
         await asyncio.sleep(10)  # let the proxy start first
-        last_ct_scan = None
+        last_ct_scan = last_status = None
         while True:
             now = asyncio.get_running_loop().time()
             if last_ct_scan is None or now - last_ct_scan > CT_INTERVAL:
@@ -259,8 +263,31 @@ class Reporter:
                         last_ct_scan = now
                 except Exception:
                     _LOGGER.exception("Certificate Transparency check failed")
+            if last_status is None or now - last_status >= STATUS_INTERVAL:
+                try:
+                    await self.publish_status()
+                    last_status = now
+                except Exception:
+                    _LOGGER.exception("Couldn't publish status to Home Assistant")
             try:
-                await self.publish_status()
+                await self.track_connections()
             except Exception:
-                _LOGGER.exception("Couldn't publish status to Home Assistant")
-            await asyncio.sleep(STATUS_INTERVAL)
+                _LOGGER.exception("Couldn't read the access log")
+            await asyncio.sleep(CONNECTION_INTERVAL)
+
+
+def last_connection(lines: list[str], fqdn: str) -> dict | None:
+    """The newest request for the hostname in Caddy's JSON access log: {"at", "ip"}."""
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        request = entry.get("request") or {}
+        host = (request.get("host") or "").split(":")[0].lower()
+        if host != fqdn.lower():
+            continue
+        ip = request.get("client_ip") or request.get("remote_ip") or ""
+        at = datetime.datetime.fromtimestamp(float(entry.get("ts", 0)), datetime.UTC).isoformat()
+        return {"at": at, "ip": ip}
+    return None

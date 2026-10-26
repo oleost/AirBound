@@ -39,6 +39,18 @@ class Supervisor:
             if resp.status >= 400:
                 raise SupervisorError(f"POST {path} failed: {resp.status}")
 
+    async def core_delete(self, path: str) -> None:
+        async with self._session.delete(f"{SUPERVISOR_URL}/core/api{path}", headers=self._headers) as resp:
+            if resp.status >= 400 and resp.status != 404:
+                raise SupervisorError(f"DELETE {path} failed: {resp.status}")
+
+    async def mqtt_service(self) -> dict | None:
+        """The MQTT broker's address and credentials, if one is installed."""
+        try:
+            return await self.get("/services/mqtt")
+        except SupervisorError:
+            return None
+
     async def ha_upstream(self) -> str:
         """host:port where Caddy and the guard reach Home Assistant."""
         info = await self.get("/core/info")

@@ -13,6 +13,7 @@ from .certwatch import CertWatch
 from .crowdsec import CrowdSec, log_failed_login
 from .golive import GoLive, keep_dns_current, keep_port_open
 from .guard import AuthGuard
+from .mqtt import Mqtt
 from .relay import Frpc
 from .reporting import Reporter
 from .settings import Store
@@ -38,7 +39,13 @@ async def main() -> None:
     caddy = Caddy(bouncer_key=lambda: crowdsec.bouncer_key)
     frpc = Frpc()
     certwatch = CertWatch()
-    reporter = Reporter(store, supervisor, session, frpc, crowdsec, certwatch)
+    broker_config = await supervisor.mqtt_service()
+    broker = Mqtt(broker_config) if broker_config else None
+    if broker:
+        broker.start()
+    else:
+        _LOGGER.info("No MQTT broker found; sensors go through the REST API instead")
+    reporter = Reporter(store, supervisor, session, frpc, crowdsec, certwatch, broker)
 
     def on_guard_event(event: str, info: dict) -> None:
         reporter.on_guard_event(event, info)
@@ -76,6 +83,8 @@ async def main() -> None:
 
     ddns.cancel()
     reporting.cancel()
+    if broker:
+        await broker.stop()
     portmapping.cancel()
     await frpc.stop()
     await caddy.stop()

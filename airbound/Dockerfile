@@ -20,6 +20,8 @@ RUN case "$BUILD_ARCH" in \
     && mv /tmp/frp_${FRP_VERSION}_linux_${ARCH}/frpc /usr/local/bin/frpc
 
 FROM python:3.13-alpine
+ARG BUILD_VERSION=dev
+ENV AIRBOUND_VERSION=$BUILD_VERSION
 COPY --from=caddy-build /usr/bin/caddy /usr/local/bin/caddy
 COPY --from=frpc /usr/local/bin/frpc /usr/local/bin/frpc
 COPY --from=crowdsec /usr/local/bin/crowdsec /usr/local/bin/cscli /usr/local/bin/
