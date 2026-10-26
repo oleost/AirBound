@@ -98,6 +98,8 @@ async function setPort(value) {
 function followGoLive() {
   poll(async () => {
     view.progress = await api("go-live");
+    // Going live unlocks the next steps; reload their status before showing the result.
+    if (!view.progress.busy) await refreshState();
     render();
     return view.progress.busy;
   }, 1500);
@@ -515,7 +517,13 @@ steps.go_live = () => {
       <div class="muted small">Your Home Assistant address</div>
       <div class="address">${esc(s.url)}</div>
       ${tasks ? `<div style="margin-top:16px">${tasks}</div>` : ""}
-      ${done ? '<div class="notice good"><p>AirBound is running. One step left: your router has to let the traffic in.</p></div>' : ""}
+      ${
+        done
+          ? s.mode === "relay"
+            ? '<div class="notice good"><p>AirBound is live. Your phone reaches Home Assistant through your relay server, and your router needs no changes.</p></div>'
+            : '<div class="notice good"><p>AirBound is running. One step left: your router has to let the traffic in.</p></div>'
+          : ""
+      }
       <div class="actions">${actions}</div>
     </div>`
   );
