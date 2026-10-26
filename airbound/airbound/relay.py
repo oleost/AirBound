@@ -121,7 +121,8 @@ def install_command(settings: Settings, pki: dict[str, str]) -> str:
         .replace("__SERVER_KEY__", pki["server.key"].strip())
     )
     encoded = base64.b64encode(script.encode()).decode()
-    return f"echo {encoded} | base64 -d | sudo sh"
+    # Uses sudo where it exists; root-only servers (Debian's default) have no sudo and run sh directly.
+    return f"echo {encoded} | base64 -d | $(command -v sudo) sh"
 
 
 def render_frpc(settings: Settings) -> str:

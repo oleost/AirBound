@@ -1,0 +1,176 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "relay-server" / "controller"))
+
+from airbound_relay import access  # noqa: E402
+from airbound_relay.config import Config  # noqa: E402
+from airbound_relay.db import Database  # noqa: E402
+from airbound_relay.frp import Plugin  # noqa: E402
+from airbound_relay.patreon import members_entitled, membership_in, valid_signature  # noqa: E402
+from airbound_relay.web import RateLimit, claim_code  # noqa: E402
+
+TIER = "29918172"
+CONFIG = Config(domain="airbound.dev", campaign_id="17028040", tier_id=TIER, site_key="sitekey", free_users=frozenset({"owner"}))
+INSTALL = "install-0123456789abcdef"
+
+
+def member(status="active_patron", tiers=(TIER,), user="u1", campaign="17028040"):
+    return {
+        "type": "member",
+        "attributes": {"patron_status": status},
+        "relationships": {
+            "currently_entitled_tiers": {"data": [{"id": t, "type": "tier"} for t in tiers]},
+            "user": {"data": {"id": user, "type": "user"}},
+            "campaign": {"data": {"id": campaign, "type": "campaign"}},
+        },
+    }
+
+
+def linked(db, patreon_id="u1", entitled=True):
+    db.set_entitled(patreon_id, entitled)
+    return db.link_device(patreon_id, INSTALL, CONFIG.max_devices)
+
+
+def proxy(device, key, domains, proxy_type="https"):
+    return {"user": {"user": device, "metas": {"key": key}}, "proxy_type": proxy_type, "custom_domains": domains, "subdomain": ""}
+
+
+def test_entitlement_needs_active_status_and_the_relay_tier():
+    assert access.member_entitled(member(), TIER)
+    assert not access.member_entitled(member(tiers=("free-tier",)), TIER)
+    assert not access.member_entitled(member(status="declined_patron"), TIER)
+    assert not access.member_entitled(member(status="former_patron"), TIER)
+
+
+def test_identity_only_counts_this_campaign():
+    identity = {"data": {"id": "u1"}, "included": [member(campaign="someone-else")]}
+    assert membership_in(identity, "17028040", TIER) == ("u1", False)
+    identity["included"].append(member())
+    assert membership_in(identity, "17028040", TIER) == ("u1", True)
+
+
+def test_member_list_maps_users():
+    pages = [{"data": [member(user="a"), member(user="b", status="declined_patron")]}]
+    assert members_entitled(pages, TIER) == {"a": True, "b": False}
+
+
+def test_grace_period_after_lapse(tmp_path):
+    db = Database(tmp_path / "db")
+    db.set_entitled("u1", True, now=1000)
+    account = db.set_entitled("u1", False, now=2000)
+    assert account.lapsed_at == 2000
+    assert access.state(account, "u1", frozenset(), 3, now=2000 + 2 * 86400) == access.GRACE
+    assert access.state(account, "u1", frozenset(), 3, now=2000 + 4 * 86400) == access.EXPIRED
+    assert db.set_entitled("u1", False, now=9000).lapsed_at == 2000  # the grace period doesn't restart
+    assert db.set_entitled("u1", True, now=9500).lapsed_at is None
+
+
+def test_never_paid_gets_no_grace(tmp_path):
+    db = Database(tmp_path / "db")
+    account = db.set_entitled("u2", False)
+    assert access.state(account, "u2", frozenset(), 3) == access.EXPIRED
+    assert access.state(None, "owner", frozenset({"owner"}), 3) == access.ACTIVE
+
+
+def test_relinking_the_same_home_assistant_keeps_its_address(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    again, new_key = db.link_device("u1", INSTALL, 2)
+    assert again.hostname == device.hostname and new_key != key
+    assert db.device_by_key(key) is None and db.device_by_key(new_key).id == device.id
+
+
+def test_device_limit_unlinks_the_least_recent(tmp_path):
+    db = Database(tmp_path / "db")
+    db.set_entitled("u1", True)
+    first, key1 = db.link_device("u1", "install-aaaaaaaaaaaaaaaa", 2, now=1)
+    _second, key2 = db.link_device("u1", "install-bbbbbbbbbbbbbbbb", 2, now=2)
+    db.seen(first.id, now=10)  # the first one is still in use
+    _third, key3 = db.link_device("u1", "install-cccccccccccccccc", 2, now=11)
+    assert db.device_by_key(key1) and db.device_by_key(key3)
+    assert db.device_by_key(key2) is None
+
+
+def test_plugin_login_needs_a_valid_key_for_that_device(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    plugin = Plugin(CONFIG, db)
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key}})["reject"] is False
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": "wrong"}})["reject"] is True
+    assert plugin.handle("Login", {"user": "other", "metas": {"key": key}})["reject"] is True
+    assert plugin.handle("Login", {"user": device.id})["reject"] is True
+
+
+def test_plugin_proxy_only_for_own_hostname_with_server_side_limit(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    plugin = Plugin(CONFIG, db)
+    own = f"{device.hostname}.airbound.dev"
+    result = plugin.handle("NewProxy", proxy(device.id, key, [own]))
+    assert result["reject"] is False and result["unchange"] is False
+    assert result["content"]["bandwidth_limit"] == "4MB" and result["content"]["bandwidth_limit_mode"] == "server"
+    for domains in (["airbound.dev"], ["relay.airbound.dev"], ["x.airbound.dev"], [own, "x.airbound.dev"]):
+        assert plugin.handle("NewProxy", proxy(device.id, key, domains))["reject"] is True, domains
+    assert plugin.handle("NewProxy", proxy(device.id, key, [own], proxy_type="tcp"))["reject"] is True
+
+
+def test_site_key_may_only_publish_the_domain_itself(tmp_path):
+    plugin = Plugin(CONFIG, Database(tmp_path / "db"))
+    assert plugin.handle("NewProxy", proxy("site", "sitekey", ["airbound.dev"]))["reject"] is False
+    assert plugin.handle("NewProxy", proxy("site", "sitekey", ["x.airbound.dev"]))["reject"] is True
+    assert plugin.handle("Login", {"user": "intruder", "metas": {"key": "sitekey"}})["reject"] is True
+
+
+def test_ping_disconnects_after_membership_ends(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    plugin = Plugin(CONFIG, db)
+    ping = {"user": {"user": device.id, "metas": {"key": key}}}
+    assert plugin.handle("Ping", ping, now=1000)["reject"] is False
+    db.set_entitled("u1", False, now=1000)
+    assert plugin.handle("Ping", ping, now=1000 + 86400)["reject"] is False  # grace period
+    assert plugin.handle("Ping", ping, now=1000 + 4 * 86400)["reject"] is True
+
+
+def test_claim_key_is_handed_out_once(tmp_path):
+    db = Database(tmp_path / "db")
+    claim_id, poll = db.new_claim(INSTALL)
+    assert db.claim_for_poll(claim_id, "wrong") is None
+    device, key = linked(db)
+    db.set_claim(claim_id, "approved", patreon_id="u1", device_id=device.id, device_key=key)
+    assert db.claim_for_poll(claim_id, poll)["device_key"] == key
+    db.take_claim_key(claim_id)
+    assert db.claim_for_poll(claim_id, poll)["device_key"] is None
+
+
+def test_claims_expire(tmp_path):
+    db = Database(tmp_path / "db")
+    claim_id, poll = db.new_claim(INSTALL, now=1000)
+    assert db.claim_for_poll(claim_id, poll, now=1000 + 60)
+    assert db.claim_for_poll(claim_id, poll, now=1000 + 901) is None
+
+
+def test_claim_code_is_stable_and_readable():
+    code = claim_code("abc")
+    assert code == claim_code("abc") and len(code) == 7 and code[3] == "-"
+    assert not set(code) & set("01IO")
+
+
+def test_webhook_signature():
+    import hashlib
+    import hmac
+
+    body = b'{"data":{}}'
+    good = hmac.new(b"s3cret", body, hashlib.md5).hexdigest()
+    assert valid_signature("s3cret", body, good)
+    assert not valid_signature("s3cret", body, "0" * 32)
+    assert not valid_signature("s3cret", body, "")
+
+
+def test_rate_limit():
+    limit = RateLimit(2, 60)
+    assert limit.allow("a", now=0) and limit.allow("a", now=1)
+    assert not limit.allow("a", now=2)
+    assert limit.allow("b", now=2)
+    assert limit.allow("a", now=61.5)

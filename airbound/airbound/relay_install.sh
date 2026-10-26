@@ -10,7 +10,7 @@ VERSION="0.71.0"
 
 fail() { echo "AirBound relay: $1" >&2; exit 1; }
 
-[ "$(id -u)" = 0 ] || fail "run this as root (put sudo in front)."
+[ "$(id -u)" = 0 ] || fail "run this as root: log in as root, or install sudo."
 command -v systemctl >/dev/null 2>&1 || fail "this server needs systemd (Debian or Ubuntu)."
 command -v curl >/dev/null 2>&1 || fail "curl is missing. Install it with: apt install -y curl"
 

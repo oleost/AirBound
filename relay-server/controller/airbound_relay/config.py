@@ -1,0 +1,88 @@
+"""Controller settings, read from /etc/airbound-controller (never from the repository)."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+CONFIG_DIR = Path(os.environ.get("AIRBOUND_CONFIG_DIR", "/etc/airbound-controller"))
+STATE_DIR = Path(os.environ.get("AIRBOUND_STATE_DIR", "/var/lib/airbound-controller"))
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"')
+    return values
+
+
+@dataclass(frozen=True)
+class Config:
+    domain: str = "airbound.dev"
+    relay_host: str = "relay.airbound.dev"  # where Home Assistant's frpc connects
+    relay_port: int = 7000
+    public_ip: str = ""
+    campaign_id: str = ""
+    tier_id: str = ""  # the Patreon tier that gives access
+    patreon_vanity: str = "AirBound"
+    client_id: str = ""
+    client_secret: str = ""
+    creator_access_token: str = ""
+    creator_refresh_token: str = ""
+    cloudflare_token: str = ""
+    site_key: str = ""  # lets the local frpc publish airbound.dev itself
+    free_users: frozenset[str] = field(default_factory=frozenset)  # Patreon user ids with free access
+    max_devices: int = 2  # Home Assistants per membership
+    bandwidth: str = "4MB"  # per Home Assistant, each direction (frp syntax)
+    grace_days: int = 3  # access after a membership lapses, to fix a failed payment
+    web_port: int = 7500  # public pages and API, behind Caddy
+    plugin_port: int = 7600  # frps server plugin, localhost only
+
+    @property
+    def base_url(self) -> str:
+        return f"https://{self.domain}"
+
+    @property
+    def redirect_uri(self) -> str:
+        return f"{self.base_url}/patreon/callback"
+
+    @property
+    def join_url(self) -> str:
+        """Patreon checkout for the relay tier, which starts the free trial."""
+        return f"https://www.patreon.com/checkout/{self.patreon_vanity}?rid={self.tier_id}"
+
+    @property
+    def manage_url(self) -> str:
+        return f"https://www.patreon.com/c/{self.patreon_vanity}/membership"
+
+
+def load(config_dir: Path = CONFIG_DIR) -> Config:
+    env = {**read_env_file(config_dir / "controller.env"), **read_env_file(config_dir / "patreon.env")}
+    token_file = config_dir / "cloudflare_token"
+    free = {u.strip() for u in env.get("FREE_PATREON_USERS", "").split(",") if u.strip()}
+    return Config(
+        domain=env.get("DOMAIN", "airbound.dev"),
+        relay_host=env.get("RELAY_HOST", "relay." + env.get("DOMAIN", "airbound.dev")),
+        relay_port=int(env.get("RELAY_PORT", "7000")),
+        public_ip=env.get("PUBLIC_IP", ""),
+        campaign_id=env.get("CAMPAIGN_ID", ""),
+        tier_id=env.get("RELAY_TIER_ID", ""),
+        patreon_vanity=env.get("PATREON_VANITY", "AirBound"),
+        client_id=env.get("PATREON_CLIENT_ID", ""),
+        client_secret=env.get("PATREON_CLIENT_SECRET", ""),
+        creator_access_token=env.get("PATREON_CREATOR_ACCESS_TOKEN", ""),
+        creator_refresh_token=env.get("PATREON_CREATOR_REFRESH_TOKEN", ""),
+        cloudflare_token=token_file.read_text().strip() if token_file.exists() else "",
+        site_key=env.get("SITE_KEY", ""),
+        free_users=frozenset(free),
+        max_devices=int(env.get("MAX_DEVICES", "2")),
+        bandwidth=env.get("BANDWIDTH", "4MB"),
+        grace_days=int(env.get("GRACE_DAYS", "3")),
+    )

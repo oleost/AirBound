@@ -26,7 +26,7 @@ def test_wizard_steps_per_mode():
 def test_install_command_embeds_settings_and_verifies_download():
     pki = make_pki()
     command = install_command(RELAY, pki)
-    assert command.startswith("echo ") and command.endswith(" | base64 -d | sudo sh")
+    assert command.startswith("echo ") and command.endswith(" | base64 -d | $(command -v sudo) sh")
     script = base64.b64decode(command.split()[1]).decode()
     assert 'TOKEN="abc123"' in script
     assert 'CONTROL_PORT="7000"' in script
