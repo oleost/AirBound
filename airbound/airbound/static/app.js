@@ -227,7 +227,7 @@ const steps = {};
 steps.welcome = () =>
   solo(
     `<h1>Reach your Home Assistant from anywhere</h1>
-    <p class="lead">AirBound gives Home Assistant its own secure web address. It works in the Home Assistant app and in any browser, at home, at work or on a borrowed computer. No subscription and no VPN app.</p>
+    <p class="lead">AirBound gives Home Assistant its own secure web address. It works in the Home Assistant app and in any browser, at home, at work or on a borrowed computer, with no VPN app.</p>
     <div class="card">
       <h2>You'll need one of these</h2>
       <ul class="plain">
