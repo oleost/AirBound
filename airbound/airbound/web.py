@@ -9,14 +9,14 @@ from pathlib import Path
 import segno
 from aiohttp import ClientSession, web
 
-from . import checks, ha_settings, network, portmap, relay, users
+from . import checks, ha_settings, network, portmap, relay, steps, users
 from .caddy import Caddy
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
 from .golive import GoLive
 from .guard import AuthGuard
-from .settings import ALL_STEPS, COMMON_HOSTNAMES, Store, random_hostname, valid_hostname, wizard_steps
+from .settings import ALL_STEPS, COMMON_HOSTNAMES, Store, random_hostname, valid_hostname
 from .supervisor import Supervisor
 
 INGRESS_PROXY = "172.30.32.2"
@@ -75,6 +75,7 @@ class Panel:
         r.add_static("/static", STATIC)
         r.add_get("/api/state", self.state)
         r.add_post("/api/step", self.set_step)
+        r.add_post("/api/step-done", self.step_done)
         r.add_post("/api/cloudflare", self.cloudflare_token)
         r.add_get("/api/cloudflare/zones", self.cloudflare_zones)
         r.add_post("/api/domain", self.domain)
@@ -106,10 +107,28 @@ class Panel:
 
     def _state(self, request: web.Request) -> dict:
         settings = self._store.settings
-        return {"settings": settings.public(), "steps": wizard_steps(settings.mode), "user_id": user_id(request)}
+        return {"settings": settings.public(), "user_id": user_id(request)}
+
+    async def _steps(self, request: web.Request) -> dict:
+        """The setup steps with their status, plus where the panel should open."""
+        settings = self._store.settings
+        (http,) = await self._supervisor.ws({"type": "http/config"})
+        people = await users.list_people(self._supervisor, user_id(request))
+        computed = steps.compute(
+            settings,
+            http_ok=checks.check_http(http.get("stable") or {}).ok,
+            blocking=users.blocking(people),
+            people=len(people),
+        )
+        return {
+            **self._state(request),
+            "steps": steps.as_dicts(computed),
+            "complete": steps.complete(computed),
+            "landing": steps.landing(settings, computed),
+        }
 
     async def state(self, request: web.Request) -> web.Response:
-        return web.json_response(self._state(request))
+        return web.json_response(await self._steps(request))
 
     async def set_step(self, request: web.Request) -> web.Response:
         step = (await request.json()).get("step")
@@ -117,6 +136,17 @@ class Panel:
             raise web.HTTPBadRequest()
         self._store.update(wizard_step=step)
         return web.json_response({"ok": True})
+
+    async def step_done(self, request: web.Request) -> web.Response:
+        """Steps only the user can confirm: the port forward works, and they've seen the phone setup."""
+        step = (await request.json()).get("step")
+        if step == "router":
+            self._store.update(router_done=True)
+        elif step == "devices":
+            self._store.update(devices_done=True)
+        else:
+            raise web.HTTPBadRequest()
+        return web.json_response(await self._steps(request))
 
     async def connection(self, request: web.Request) -> web.Response:
         mode = (await request.json()).get("mode")
@@ -126,12 +156,13 @@ class Panel:
         changes: dict = {"mode": mode}
         if mode != settings.mode:
             changes["live"] = False  # the address has to point somewhere else now
+            changes["router_done"] = False
             if mode == "relay":
                 changes["external_port"] = 443  # the relay has port 443 to itself
         if mode == "relay" and not settings.relay_token:
             changes["relay_token"] = relay.new_token()
         self._store.update(**changes)
-        return web.json_response(self._state(request))
+        return web.json_response(await self._steps(request))
 
     async def relay_info(self, _request: web.Request) -> web.Response:
         settings = self._store.settings
@@ -272,7 +303,8 @@ class Panel:
             port = 0
         if not 1 <= port <= 65535:
             return web.json_response({"error": "Use a port number between 1 and 65535, for example 8443."}, status=400)
-        self._store.update(external_port=port)
+        if port != self._store.settings.external_port:
+            self._store.update(external_port=port, router_done=False)
         return web.json_response({"settings": self._store.settings.public()})
 
     async def qr(self, _request: web.Request) -> web.Response:

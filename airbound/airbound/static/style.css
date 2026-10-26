@@ -51,9 +51,87 @@ body {
 }
 
 main {
-  max-width: 720px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 24px 16px 64px;
+}
+
+/* Layout: step list beside the content on wide screens, a dropdown on phones. */
+.shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.shell.solo { grid-template-columns: minmax(0, 720px); justify-content: center; }
+.content { min-width: 0; max-width: 720px; }
+.side-nav { position: sticky; top: 16px; }
+.mobile-nav { display: none; }
+
+.nav-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.nav-item {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font-weight: 400;
+}
+.nav-item:hover:not(:disabled) { background: var(--line); }
+.nav-item.current { background: var(--accent-soft); }
+.nav-item.current .nav-title { font-weight: 700; }
+.nav-item:disabled { cursor: not-allowed; opacity: 1; }
+.nav-item.locked .nav-title { color: var(--muted); }
+.nav-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1.5px solid var(--line);
+  color: var(--muted);
+  margin-top: 1px;
+}
+.nav-item.current .nav-icon { border-color: var(--accent); color: var(--accent); }
+.nav-item.done .nav-icon { background: var(--good); border-color: var(--good); color: #fff; }
+.nav-item.locked .nav-icon { border-style: dashed; }
+.nav-icon.overview { border-color: var(--accent); color: var(--accent); font-size: 14px; }
+.nav-text { display: grid; min-width: 0; }
+.nav-title { font-size: 14px; }
+.nav-sub { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; line-height: 1.35; }
+
+@media (max-width: 820px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .side-nav { display: none; }
+  .mobile-nav {
+    display: block;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .mobile-nav summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+  }
+  .mobile-nav summary::after { content: "All steps ▾"; font-weight: 400; color: var(--accent); font-size: 14px; }
+  .mobile-nav[open] summary::after { content: "Close ▴"; }
+  .mobile-nav .nav-list { padding: 0 8px 8px; }
+  /* The menu already says which step this is. */
+  .content .step-label { visibility: hidden; }
+  .content .step-head { min-height: 0; margin-bottom: 8px; }
 }
 
 h1 { font-size: 24px; line-height: 1.25; margin: 0 0 8px; }
@@ -63,18 +141,6 @@ a { color: var(--accent); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 
-.progress {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-.progress span {
-  flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--line);
-}
-.progress span.done { background: var(--accent); }
 .step-head {
   display: flex;
   justify-content: space-between;

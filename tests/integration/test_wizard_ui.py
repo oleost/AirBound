@@ -14,12 +14,14 @@ from test_login_page import SCREENSHOTS
 EXPECTED = {
     "welcome": "Reach your Home Assistant from anywhere",
     "cloudflare": "Connect your domain",
+    "connection": "How should your phone reach Home Assistant?",
+    "relay": "Set up your relay server",
     "ha_settings": "Let Home Assistant see who is connecting",
     "users": "Two-step login for everyone who logs in from outside",
     "go_live": "Go live",
     "router": "Let the traffic in through your router",
     "devices": "Connect your phone",
-    "done": "Remote access",
+    "overview": "Remote access",
 }
 VIEWPORTS = {"phone": {"width": 390, "height": 844}, "desktop": {"width": 1100, "height": 900}}
 
@@ -43,17 +45,19 @@ async def test_every_step_renders_cleanly(browser, panel, live, device):
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     SCREENSHOTS.mkdir(exist_ok=True)
-    original_step = (await panel.get("api/state"))["settings"]["wizard_step"]
     try:
+        state = await panel.get("api/state")
+        available = {"welcome", "overview"} | {s["id"] for s in state["steps"] if not s["locked"]}
         for i, (step, heading) in enumerate(EXPECTED.items()):
-            await panel.post("api/step", {"step": step})
-            await page.goto(base, wait_until="networkidle")
+            if step not in available:
+                continue
+            await page.goto(f"{base}#{step}", wait_until="networkidle")
+            await page.reload(wait_until="networkidle")
             await page.get_by_role("heading", level=1).filter(has_text=heading).wait_for(timeout=10_000)
             await page.wait_for_timeout(1500)  # let the step load its data
             await page.screenshot(path=SCREENSHOTS / f"wizard_{device}_{i}_{step}.png", full_page=True)
             overflow = await page.evaluate("document.documentElement.scrollWidth > window.innerWidth")
             assert not overflow, f"{step} scrolls sideways on {device}"
     finally:
-        await panel.post("api/step", {"step": original_step})
         await context.close()
     assert not errors, errors

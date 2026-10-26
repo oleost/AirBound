@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
 SETTINGS_FILE = Path("/data/settings.json")
-ALL_STEPS = ("welcome", "cloudflare", "connection", "relay", "ha_settings", "users", "go_live", "router", "devices", "done")
+ALL_STEPS = ("welcome", "cloudflare", "connection", "relay", "ha_settings", "users", "go_live", "router", "devices", "overview", "done")
 
 
 def wizard_steps(mode: str) -> list[str]:
@@ -54,6 +54,8 @@ class Settings:
     relay_token: str = ""
     relay_control_port: int = 7000
     port_mapping: str = ""  # "natpmp" or "upnp" when AirBound opened the router port itself
+    router_done: bool = False  # the user confirmed the port forward works
+    devices_done: bool = False  # the user has seen how to connect their phone
 
     @property
     def fqdn(self) -> str:

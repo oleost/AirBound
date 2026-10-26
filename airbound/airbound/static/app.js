@@ -3,21 +3,11 @@
 // The AirBound panel. Runs inside Home Assistant's ingress, so every URL is relative.
 
 const app = document.getElementById("app");
-let state = null; // { settings, steps, user_id }
-let timer = null; // the current step's polling timer
-let view = {}; // per-step UI state that survives re-renders
-
-const STEP_TITLES = {
-  welcome: "Welcome",
-  cloudflare: "Your domain",
-  connection: "How to connect",
-  relay: "Relay server",
-  ha_settings: "Home Assistant settings",
-  users: "Two-step login",
-  go_live: "Go live",
-  router: "Your router",
-  devices: "Your devices",
-};
+// { settings, user_id, steps: [{ id, title, done, locked, reason, summary }], complete, landing }
+let state = null;
+let current = null; // the page being shown: "welcome", "overview" or a step id
+let timer = null; // the current page's polling timer
+let view = {}; // per-page UI state that survives re-renders
 
 // ---------- helpers ----------
 
@@ -85,7 +75,7 @@ const enter = {
     }),
   router: () => load(api("router"), (d) => (view.info = d)),
   devices: () => load(api("router"), (d) => (view.info = d)),
-  done: () =>
+  overview: () =>
     poll(async () => {
       view.status = await api("status");
       view.bans = (await api("bans")).bans;
@@ -113,19 +103,51 @@ function followGoLive() {
   }, 1500);
 }
 
-async function go(step) {
-  stopPolling();
-  view = {};
-  await api("step", { step });
-  state.settings.wizard_step = step;
-  render();
-  enter[step]?.();
-  window.scrollTo(0, 0);
+// Reloads step status after anything that may have finished or unlocked a step.
+async function refreshState() {
+  state = await api("state");
 }
 
-function nextStep(offset = 1) {
-  const steps = state.steps;
-  return steps[steps.indexOf(state.settings.wizard_step) + offset];
+async function go(page) {
+  stopPolling();
+  view = {};
+  current = page;
+  history.replaceState(null, "", `#${page}`); // a reload stays on this page
+  render();
+  window.scrollTo(0, 0);
+  api("step", { step: page }).catch(() => {});
+  await refreshState().catch(() => {});
+  render();
+  enter[page]?.();
+}
+
+const stepById = (id) => state.steps.find((s) => s.id === id);
+
+// The next step that can be opened, or the overview once everything is live.
+function nextPage() {
+  const index = state.steps.findIndex((s) => s.id === current);
+  const later = state.steps.slice(index + 1).find((s) => !s.locked);
+  if (later) return later;
+  return state.settings.live ? { id: "overview", title: "Overview" } : null;
+}
+
+function previousPage() {
+  const index = state.steps.findIndex((s) => s.id === current);
+  return [...state.steps.slice(0, Math.max(index, 0))].reverse().find((s) => !s.locked) || null;
+}
+
+// Refresh status first: finishing this step may have unlocked the next one.
+async function goNext() {
+  await refreshState().catch(() => {});
+  const next = nextPage();
+  go(next ? next.id : current);
+}
+
+// "Continue: Your router" says where the button goes (NN/g: name the next step).
+function continueButton({ disabled = false, action = "next" } = {}) {
+  const next = nextPage();
+  if (!next) return "";
+  return `<button class="primary" data-action="${action}" ${disabled ? "disabled" : ""}>Continue: ${esc(next.title)}</button>`;
 }
 
 // Not 8443: UniFi and many other routers serve their own settings page there.
@@ -133,15 +155,44 @@ const SUGGESTED_PORT = 9443;
 
 const COMMON_HOSTNAMES = ["ha", "hass", "home", "homeassistant", "home-assistant", "smarthome", "smart", "hjem", "huset", "house", "iot", "hub", "remote", "vpn", "www"];
 
+const LOCK = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h1v8H3V7h1Zm2 0h4V5a2 2 0 1 0-4 0v2Z"/></svg>';
+
+// The step list: names and status, completed steps show what's set up, steps that
+// depend on something unfinished are greyed out with the reason (PatternFly wizard).
+function stepNav() {
+  const items = [];
+  if (state.settings.live) {
+    items.push(`<li><button class="nav-item ${current === "overview" ? "current" : ""}" data-action="goto" data-step="overview" ${current === "overview" ? 'aria-current="step"' : ""}>
+      <span class="nav-icon overview" aria-hidden="true">◎</span><span class="nav-text"><span class="nav-title">Overview</span>
+      <span class="nav-sub">${state.complete ? "Everything is set up" : "Status and settings"}</span></span></button></li>`);
+  }
+  state.steps.forEach((s, i) => {
+    const isCurrent = s.id === current;
+    const icon = s.locked ? LOCK : s.done ? "✓" : String(i + 1);
+    const cls = ["nav-item", isCurrent && "current", s.done && "done", s.locked && "locked"].filter(Boolean).join(" ");
+    const sub = s.locked ? s.reason : s.done ? s.summary : isCurrent ? "You are here" : "Not done yet";
+    items.push(`<li><button class="${cls}" ${s.locked ? "disabled" : `data-action="goto" data-step="${s.id}"`} ${isCurrent ? 'aria-current="step"' : ""}>
+      <span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-text"><span class="nav-title">${esc(s.title)}</span>
+      <span class="nav-sub">${esc(sub)}</span></span>${s.locked ? `<span class="sr-only">Locked. ${esc(s.reason)}</span>` : ""}</button></li>`);
+  });
+  return `<ol class="nav-list">${items.join("")}</ol>`;
+}
+
 function frame(stepId, body) {
-  const wizard = state.steps.filter((s) => s !== "done");
-  const index = wizard.indexOf(stepId);
-  const bars = wizard.map((_, i) => `<span class="${i <= index ? "done" : ""}"></span>`).join("");
-  const back = index > 0 ? '<button class="link back" data-action="back">← Back</button>' : "";
+  const index = state.steps.findIndex((s) => s.id === stepId);
+  const step = state.steps[index];
+  const label = step ? `Step ${index + 1} of ${state.steps.length} · ${step.title}` : "Overview";
+  const prev = previousPage();
+  const back = prev ? `<button class="link back" data-action="goto" data-step="${prev.id}">← ${esc(prev.title)}</button>` : "";
   return `
-    <div class="progress" aria-hidden="true">${bars}</div>
-    <div class="step-head"><span class="step-label">Step ${index + 1} of ${wizard.length} · ${esc(STEP_TITLES[stepId])}</span>${back}</div>
-    ${body}`;
+    <div class="shell">
+      <nav class="side-nav" aria-label="Setup steps">${stepNav()}</nav>
+      <details class="mobile-nav"><summary>${esc(label)}</summary>${stepNav()}</details>
+      <section class="content">
+        <div class="step-head"><span class="step-label">${esc(label)}</span>${back}</div>
+        ${body}
+      </section>
+    </div>`;
 }
 
 function errorBox(message) {
@@ -159,8 +210,7 @@ function minutesLeft(iso) {
 const steps = {};
 
 steps.welcome = () =>
-  frame(
-    "welcome",
+  solo(
     `<h1>Reach your Home Assistant from anywhere</h1>
     <p class="lead">AirBound gives Home Assistant its own secure web address. It works in the Home Assistant app and in any browser, at home, at work or on a borrowed computer. No subscription and no VPN app.</p>
     <div class="card">
@@ -178,7 +228,7 @@ steps.welcome = () =>
         <li>Addresses that keep guessing passwords are blocked.</li>
       </ul>
     </div>
-    <div class="actions"><button class="primary" data-action="next">Get started</button></div>`
+    <div class="actions"><button class="primary" data-action="goto" data-step="${state.steps[0].id}">Get started: ${esc(state.steps[0].title)}</button></div>`
   );
 
 steps.cloudflare = () => {
@@ -334,7 +384,7 @@ steps.relay = () => {
       ${check}
       <div class="actions">
         <button class="${view.check?.reachable ? "" : "primary"}" data-action="check-relay" ${view.checking ? "disabled" : ""}>Check connection</button>
-        ${view.check?.reachable ? '<button class="primary" data-action="next">Continue</button>' : view.check ? '<button data-action="next">Continue anyway</button>' : ""}
+        ${view.check?.reachable ? continueButton() : view.check ? '<button data-action="next">Continue anyway</button>' : ""}
       </div>
     </div>`
   );
@@ -364,7 +414,7 @@ steps.ha_settings = () => {
   } else if (!st.changes.length && st.proxy_trusted) {
     body = `
       <div class="notice good"><p>Home Assistant is set up the way AirBound needs.</p></div>
-      <div class="actions"><button class="primary" data-action="next">Continue</button></div>`;
+      <div class="actions">${continueButton()}</div>`;
   } else {
     body = `
       <div class="card">
@@ -426,7 +476,7 @@ steps.users = () => {
           : ""
       }
       <div class="actions">
-        <button class="primary" data-action="next" ${!people || blocking.length ? "disabled" : ""}>Continue</button>
+        ${continueButton({ disabled: !people || blocking.length })}
         <button class="link" data-action="refresh-users">Check again</button>
       </div>
     </div>`
@@ -445,7 +495,7 @@ steps.go_live = () => {
   const failed = progress?.tasks?.some((t) => t.state === "error");
   const done = progress && !progress.busy && !failed && progress.live;
   let actions;
-  if (done) actions = '<button class="primary" data-action="next">Continue</button><button class="link" data-action="go-live">Run again</button>';
+  if (done) actions = `${continueButton()}<button class="link" data-action="go-live">Run again</button>`;
   else if (failed) actions = '<button class="primary" data-action="go-live">Try again</button>';
   else if (progress?.busy) actions = "";
   else actions = '<button class="primary" data-action="go-live">Go live</button>';
@@ -530,7 +580,7 @@ steps.router = () => {
       ${result}
       <div class="actions">
         <button class="primary" data-action="test-router" ${view.testing ? "disabled" : ""}>${view.test ? "Test again" : "Test connection"}</button>
-        ${view.test?.answer === "airbound" ? '<button class="primary" data-action="next">Continue</button>' : view.test?.answer === "unknown" ? '<button data-action="next">It works on my phone, continue</button>' : ""}
+        ${view.test?.answer === "airbound" || view.auto?.opened ? continueButton({ action: "router-done" }) : view.test?.answer === "unknown" ? '<button data-action="router-done">It works on my phone, continue</button>' : ""}
       </div>
     </div>
     ${portChooser}`
@@ -560,13 +610,21 @@ steps.devices = () => {
       </ol>
       <p class="muted small">On a new phone, choose <b>Enter address manually</b> when the app asks for your server, and use the address above.</p>
     </div>
-    <div class="actions"><button class="primary" data-action="next">Finish</button></div>`
+    <div class="actions"><button class="primary" data-action="devices-done">Done: go to the overview</button></div>`
   );
 };
 
-steps.done = () => {
+// After setup: one place that shows how everything is set up, with a way to change each part.
+steps.overview = () => {
   const s = state.settings;
   const st = view.status;
+  const setup = state.steps
+    .map(
+      (step) => `<div class="row"><div class="grow"><b>${esc(step.title)}</b>
+        <div class="muted small">${esc(step.done ? step.summary : step.locked ? step.reason : "Not done yet")}</div></div>
+        ${step.locked ? "" : `<button class="link" data-action="goto" data-step="${step.id}">${step.done ? "Change" : "Set up"}</button>`}</div>`
+    )
+    .join("");
   const allOk = st && st.checks.every((c) => c.ok);
   const checks = (st?.checks || [])
     .map(
@@ -575,8 +633,9 @@ steps.done = () => {
         ${c.fix_step ? `<div class="actions" style="margin-top:8px"><button data-action="goto" data-step="${esc(c.fix_step)}">${esc(c.fix_label)}</button></div>` : ""}</div></div>`
     )
     .join("");
-  return `
-    <h1>${s.live ? (st ? (allOk ? "Remote access is on" : "Remote access needs attention") : "Remote access") : "Remote access is off"}</h1>
+  return frame(
+    "overview",
+    `<h1>${s.live ? (st ? (allOk ? "Remote access is on" : "Remote access needs attention") : "Remote access") : "Remote access is off"}</h1>
     <div class="card">
       <div class="muted small">Your Home Assistant address</div>
       <div class="address">${esc(s.url)}</div>
@@ -588,6 +647,10 @@ steps.done = () => {
     <div class="card">
       <h2 style="margin-top:0">Health</h2>
       ${st ? checks : '<p><span class="spinner"></span> Checking…</p>'}
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Your setup</h2>
+      <div class="list">${setup}</div>
     </div>
     ${
       view.bans?.length
@@ -616,15 +679,28 @@ steps.done = () => {
       </div>
       ${view.confirmMfaOff ? `<div class="notice bad"><p>Are you sure? Anyone who has or guesses a password could then log in from anywhere.</p><div class="actions"><button data-action="mfa-off-yes">Turn it off</button><button class="primary" data-action="mfa-off-no">Keep it on</button></div></div>` : ""}
       ${st ? `<p class="muted small" style="margin-top:12px">Logins refused because two-step login was missing (since AirBound started): <b>${st.refused_logins}</b></p>` : ""}
-    </div>
-    <div class="actions"><button class="link" data-action="goto" data-step="cloudflare">Change domain or run setup again</button></div>`;
+    </div>`
+  );
 };
+
+// The welcome page stands alone: no step list before the user has started.
+function solo(body) {
+  return `<div class="shell solo"><section class="content">${body}</section></div>`;
+}
 
 // ---------- actions ----------
 
 const actions = {
-  next: () => go(nextStep()),
+  next: () => goNext(),
   goto: (el) => go(el.dataset.step),
+  async "router-done"() {
+    state = await api("step-done", { step: "router" });
+    goNext();
+  },
+  async "devices-done"() {
+    state = await api("step-done", { step: "devices" });
+    go("overview");
+  },
 
   async "check-token"() {
     const token = document.getElementById("token").value.trim();
@@ -676,19 +752,15 @@ const actions = {
     try {
       const d = await api("domain", body);
       state.settings = d.settings;
-      go(nextStep());
+      goNext();
     } catch (e) {
       view.error = e.message;
       render();
     }
   },
-  back: () => go(nextStep(-1)),
-
   async "choose-mode"(el) {
-    const d = await api("connection", { mode: el.dataset.mode });
-    state.settings = d.settings;
-    state.steps = d.steps;
-    go(nextStep());
+    state = await api("connection", { mode: el.dataset.mode });
+    goNext();
   },
   "select-all"(el) {
     el.select();
@@ -852,7 +924,7 @@ app.addEventListener("keydown", (event) => {
 // ---------- render ----------
 
 function render() {
-  const step = state.settings.wizard_step;
+  const step = current;
   // Keep typing undisturbed: restore focus, value and caret of the active field.
   const active = document.activeElement;
   const focused = active?.id && active.tagName === "INPUT" ? active : null;
@@ -869,8 +941,13 @@ function render() {
 (async function start() {
   try {
     state = await api("state");
+    // Open where attention is needed: the overview once set up, else the first
+    // unfinished step, not wherever the user happened to be last time.
+    const pages = ["welcome", "overview", ...state.steps.filter((s) => !s.locked).map((s) => s.id)];
+    const linked = location.hash.slice(1);
+    current = pages.includes(linked) ? linked : state.landing;
     render();
-    enter[state.settings.wizard_step]?.();
+    enter[current]?.();
   } catch (e) {
     app.innerHTML = errorBox("AirBound couldn't load. Reload the page in a moment.");
   }
