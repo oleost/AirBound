@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import io
 import ipaddress
 from pathlib import Path
@@ -214,7 +215,8 @@ class Panel:
             new_fqdn = f"{device['hostname']}.{device['domain']}"
             if new_fqdn != settings.fqdn or settings.tls != "hosted":
                 await self._caddy.stop()
-                self._store.update(live=False)
+                now = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                self._store.update(live=False, hosted_since=now)
             self._store.update(
                 hosted_device=device["id"],
                 hosted_key=device["key"],

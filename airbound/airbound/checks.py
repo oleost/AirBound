@@ -182,8 +182,9 @@ async def check_protection(crowdsec: CrowdSec) -> Check:
 async def check_certificate_lock(settings: Settings, session: ClientSession, certwatch: CertWatch | None) -> Check:
     """Nobody but AirBound may hold a certificate for the hostname."""
     title = "Certificate lock"
-    if certwatch and certwatch.unexpected:
-        issuers = ", ".join(sorted({c["issuer"].split("CN=")[-1] for c in certwatch.unexpected}))
+    checked, unexpected = certwatch.results_for(settings.fqdn) if certwatch else (False, [])
+    if unexpected:
+        issuers = ", ".join(sorted({c["issuer"].split("CN=")[-1] for c in unexpected}))
         return Check(
             "cert_lock",
             title,
@@ -192,7 +193,7 @@ async def check_certificate_lock(settings: Settings, session: ClientSession, cer
             "Someone may be trying to intercept your traffic. Turn off remote access until you know why.",
         )
     if settings.tls == "hosted":
-        if certwatch and certwatch.checked:
+        if checked:
             return Check("cert_lock", title, True, "Certificate logs show no certificate for this address except the ones this Home Assistant made.")
         return Check("cert_lock", title, True, "AirBound watches the public certificate logs for this address.")
     try:
@@ -208,7 +209,7 @@ async def check_certificate_lock(settings: Settings, session: ClientSession, cer
             "Go live again",
             "go_live",
         )
-    watched = " Certificate logs show nothing unexpected." if certwatch and certwatch.checked else ""
+    watched = " Certificate logs show nothing unexpected." if checked else ""
     return Check("cert_lock", title, True, f"Only AirBound can get a certificate for this address.{watched}")
 
 

@@ -219,7 +219,8 @@ class Reporter:
             if not known_keys:
                 return False  # nothing to compare against before the first certificate
             own_keys = known_keys
-        found = await self._certwatch.scan(self._session, settings.domain, settings.fqdn, own_keys)
+        since = settings.hosted_since if settings.tls == "hosted" else ""
+        found = await self._certwatch.scan(self._session, settings.domain, settings.fqdn, own_keys, since)
         if found is None:
             return False
         known = set(self._state.setdefault("reported_certs", []))

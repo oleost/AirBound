@@ -67,6 +67,23 @@ def test_hosted_ct_watch_flags_any_certificate_for_the_name_with_a_foreign_key()
     assert unexpected_certificates([cert([fqdn], "")], fqdn, own) == []  # no key to judge by (crt.sh)
 
 
+def test_hosted_ct_watch_ignores_certificates_from_before_the_link():
+    fqdn = "x7k2abcdefgh.airbound.dev"
+    old_wildcard = {**cert(["*.airbound.dev", "airbound.dev"], "cf"), "not_before": "2026-10-26T18:18:11Z"}
+    new_wildcard = {**old_wildcard, "id": "c2", "not_before": "2026-10-27T09:00:00Z"}
+    found = unexpected_certificates([old_wildcard, new_wildcard], fqdn, {"aaa"}, since="2026-10-26T20:00:00Z")
+    assert [c["id"] for c in found] == ["c2"]
+
+
+def test_ct_results_belong_to_one_address():
+    from airbound.certwatch import CertWatch
+
+    watch = CertWatch()
+    watch.checked, watch.unexpected, watch.fqdn = True, [{"id": "x"}], "old.example.com"
+    assert watch.results_for("new.airbound.dev") == (False, [])
+    assert watch.results_for("old.example.com") == (True, [{"id": "x"}])
+
+
 def test_own_domain_ct_watch_still_ignores_wildcards():
     fqdn = "h.example.com"
     assert unexpected_certificates([cert(["*.example.com"], "x")], fqdn) == []

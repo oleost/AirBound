@@ -67,6 +67,7 @@ class Settings:
     hosted_claim: str = ""  # a link request waiting for the Patreon login
     hosted_poll: str = ""
     hosted_code: str = ""
+    hosted_since: str = ""  # when this hostname was first linked (ISO 8601 UTC), for the certificate watch
 
     @property
     def fqdn(self) -> str:

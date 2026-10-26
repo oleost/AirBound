@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import secrets
 import signal
@@ -36,6 +37,9 @@ async def main() -> None:
         store.update(mode="direct")  # set up before relay mode existed
     if not store.settings.install_id:
         store.update(install_id=secrets.token_urlsafe(24))
+    if store.settings.tls == "hosted" and not store.settings.hosted_since:
+        # Linked before 0.11.1 recorded the time; watch certificates from now on.
+        store.update(hosted_since=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
     session = ClientSession()
     supervisor = Supervisor(session)
     ha_upstream = await supervisor.ha_upstream()

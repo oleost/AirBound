@@ -343,7 +343,7 @@ steps.connection = () => {
       "Easiest",
       [
         'Nothing to set up: no domain, no server and no router changes. You get an address like <span class="mono">x7k2….airbound.dev</span>.',
-        "Needs an AirBound membership on Patreon (25 kr a month). It starts with a 7-day free trial, and you can cancel any time.",
+        "Needs an AirBound membership on Patreon. It starts with a 7-day free trial, and you can cancel any time.",
         "The relay can't read anything. The traffic stays encrypted all the way to your home, and the certificate is made by your own Home Assistant.",
       ],
       "Use the hosted relay"

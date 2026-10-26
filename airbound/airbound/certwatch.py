@@ -9,7 +9,10 @@ On the hosted relay's domain the add-on gets a certificate for the exact
 hostname itself, so there a certificate is unexpected when it covers the
 hostname (directly or as a wildcard) and has a public key this Home Assistant
 never made. Precertificates and final certificates share the key, so comparing
-keys works for both.
+keys works for both. Only certificates issued after the Home Assistant was
+linked count: its random name didn't exist before, and a wildcard issued
+earlier (say, by the DNS provider's automatic certificates) is a known
+limitation of any shared domain.
 
 The logs are searched for the whole domain, never the hostname itself, so the
 hidden hostname isn't revealed to a third party. Results are filtered here.
@@ -34,7 +37,9 @@ CRT_SH = "https://crt.sh/"
 CADDY_CERTIFICATES = Path("/data/caddy/certificates")
 
 
-def unexpected_certificates(certificates: list[dict], fqdn: str, own_keys: set[str] | None = None) -> list[dict]:
+def unexpected_certificates(
+    certificates: list[dict], fqdn: str, own_keys: set[str] | None = None, since: str = ""
+) -> list[dict]:
     """Logged certificates for the hostname that AirBound didn't order.
 
     Each certificate is {"id", "names", "issuer", "not_before", "pubkey"}. Without
@@ -50,7 +55,12 @@ def unexpected_certificates(certificates: list[dict], fqdn: str, own_keys: set[s
         if own_keys is None:
             if fqdn in names:
                 found[cert["id"]] = {**cert, "url": f"{CRT_SH}?q={fqdn}"}
-        elif (fqdn in names or wildcard in names) and cert.get("pubkey") and cert["pubkey"] not in own_keys:
+        elif (
+            (fqdn in names or wildcard in names)
+            and cert.get("pubkey")
+            and cert["pubkey"] not in own_keys
+            and cert.get("not_before", "") >= since  # ISO 8601 UTC strings sort by time
+        ):
             found[cert["id"]] = {**cert, "url": f"{CRT_SH}?q={fqdn}"}
     return list(found.values())
 
@@ -100,6 +110,7 @@ class CertWatch:
     def __init__(self) -> None:
         self.unexpected: list[dict] = []
         self.checked = False  # False until one lookup has succeeded
+        self.fqdn = ""  # the hostname the results are for
 
     async def _get_json(self, session: ClientSession, url: str, params: list[tuple[str, str]]):
         try:
@@ -112,7 +123,15 @@ class CertWatch:
             _LOGGER.info("Certificate Transparency lookup at %s failed: %s", url, err)
             return None
 
-    async def scan(self, session: ClientSession, domain: str, fqdn: str, own_keys: set[str] | None = None) -> list[dict] | None:
+    def results_for(self, fqdn: str) -> tuple[bool, list[dict]]:
+        """(checked, unexpected) for this hostname; results for an earlier address don't count."""
+        if self.fqdn != fqdn:
+            return False, []
+        return self.checked, self.unexpected
+
+    async def scan(
+        self, session: ClientSession, domain: str, fqdn: str, own_keys: set[str] | None = None, since: str = ""
+    ) -> list[dict] | None:
         """Returns the unexpected certificates, or None if no log search could be reached."""
         entries = await self._get_json(
             session,
@@ -127,7 +146,8 @@ class CertWatch:
             certificates = from_crtsh(entries) if isinstance(entries, list) else None
         if certificates is None:
             return None
-        self.unexpected = unexpected_certificates(certificates, fqdn, own_keys)
+        self.unexpected = unexpected_certificates(certificates, fqdn, own_keys, since)
         self.checked = True
+        self.fqdn = fqdn
         _LOGGER.info("Certificate Transparency: %d certificates for the domain, %d unexpected", len(certificates), len(self.unexpected))
         return self.unexpected
