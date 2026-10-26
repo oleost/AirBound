@@ -12,7 +12,13 @@ def test_every_entity_has_unique_id_device_and_short_entity_id():
         assert payload["default_entity_id"] == entity_id(key) == f"{component}.airbound_{key}"
         assert payload["availability_topic"] == AVAILABILITY
         assert payload["device"]["name"] == "AirBound remote access"
+        assert "configuration_url" not in payload["device"]  # only with a known slug
         json.dumps(payload)  # must serialise
+
+
+def test_device_links_to_the_panel_when_slug_is_known():
+    payload = dict(discovery_messages("cfebc6a4_airbound"))["homeassistant/sensor/airbound/status/config"]
+    assert payload["device"]["configuration_url"] == "homeassistant://hassio/ingress/cfebc6a4_airbound"
 
 
 def test_remote_access_is_a_connectivity_binary_sensor():

@@ -32,12 +32,11 @@ DEVICE = {
     "manufacturer": "AirBound",
     "model": "Remote access add-on",
     "sw_version": __version__,
-    "configuration_url": "homeassistant://hassio/ingress/local_airbound",
 }
 
 # key: (component, name, extra discovery fields)
 ENTITIES: dict[str, tuple[str, str, dict[str, Any]]] = {
-    "remote_access": ("binary_sensor", "Remote access", {"device_class": "connectivity"}),
+    "remote_access": ("binary_sensor", "Connected", {"device_class": "connectivity"}),
     "status": ("sensor", "Status", {"icon": "mdi:shield-check"}),
     "certificate_expires": ("sensor", "Certificate expires", {"device_class": "timestamp", "icon": "mdi:certificate"}),
     "blocked_addresses": ("sensor", "Blocked addresses", {"state_class": "measurement", "icon": "mdi:shield-lock"}),
@@ -60,8 +59,9 @@ def entity_id(key: str) -> str:
     return f"{component}.airbound_{key}"
 
 
-def discovery_messages() -> list[tuple[str, dict]]:
-    """(topic, payload) for every entity and trigger."""
+def discovery_messages(slug: str = "") -> list[tuple[str, dict]]:
+    """(topic, payload) for every entity and trigger. The slug links the device to the AirBound panel."""
+    device = {**DEVICE, "configuration_url": f"homeassistant://hassio/ingress/{slug}"} if slug else DEVICE
     messages = []
     for key, (component, name, extra) in ENTITIES.items():
         payload = {
@@ -71,7 +71,7 @@ def discovery_messages() -> list[tuple[str, dict]]:
             "state_topic": f"{BASE}/{key}/state",
             "json_attributes_topic": f"{BASE}/{key}/attributes",
             "availability_topic": AVAILABILITY,
-            "device": DEVICE,
+            "device": device,
             **extra,
         }
         if component == "binary_sensor":
@@ -86,7 +86,7 @@ def discovery_messages() -> list[tuple[str, dict]]:
                     "type": trigger_type,
                     "subtype": subtype,
                     "topic": f"{BASE}/trigger/{key}",
-                    "device": DEVICE,
+                    "device": device,
                 },
             )
         )
@@ -96,8 +96,9 @@ def discovery_messages() -> list[tuple[str, dict]]:
 class Mqtt:
     """Keeps a connection to the broker and publishes; reconnects by itself."""
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, slug: str = "") -> None:
         self._config = config
+        self._slug = slug
         self._client: aiomqtt.Client | None = None
         self._connected = asyncio.Event()
         self._task: asyncio.Task | None = None
@@ -131,7 +132,7 @@ class Mqtt:
                     will=aiomqtt.Will(AVAILABILITY, "offline", retain=True),
                 ) as client:
                     self._client = client
-                    for topic, payload in discovery_messages():
+                    for topic, payload in discovery_messages(self._slug):
                         await client.publish(topic, json.dumps(payload), retain=True)
                     await client.publish(AVAILABILITY, "online", retain=True)
                     self._connected.set()

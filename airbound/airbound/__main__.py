@@ -13,11 +13,11 @@ from .certwatch import CertWatch
 from .crowdsec import CrowdSec, log_failed_login
 from .golive import GoLive, keep_dns_current, keep_port_open
 from .guard import AuthGuard
-from .mqtt import Mqtt
+from .mqtt import ENTITIES, Mqtt, entity_id
 from .relay import Frpc
 from .reporting import Reporter
 from .settings import Store
-from .supervisor import Supervisor
+from .supervisor import Supervisor, SupervisorError
 from .web import Panel
 
 _LOGGER = logging.getLogger("airbound")
@@ -40,8 +40,16 @@ async def main() -> None:
     frpc = Frpc()
     certwatch = CertWatch()
     broker_config = await supervisor.mqtt_service()
-    broker = Mqtt(broker_config) if broker_config else None
+    slug = (await supervisor.get("/addons/self/info")).get("slug", "")
+    broker = Mqtt(broker_config, slug) if broker_config else None
     if broker:
+        # Plain REST states from before MQTT must be gone before discovery, or
+        # Home Assistant gives the new entities IDs ending in _2.
+        for key in ENTITIES:
+            try:
+                await supervisor.core_delete(f"/states/{entity_id(key)}")
+            except SupervisorError:
+                pass
         broker.start()
     else:
         _LOGGER.info("No MQTT broker found; sensors go through the REST API instead")

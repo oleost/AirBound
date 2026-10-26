@@ -24,7 +24,7 @@ import pytest
 from aiohttp.abc import AbstractResolver
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from ha import HA, load_env  # noqa: E402
+from ha import HA, addon_slug, load_env  # noqa: E402
 
 load_env()
 VM_HOST = urlparse(os.environ["HA_URL"]).hostname
@@ -73,7 +73,7 @@ class Panel:
 async def ingress() -> tuple[str, str]:
     """(panel base URL, ingress session cookie) for the token's user."""
     async with HA() as ha:
-        info = await ha.supervisor("/addons/local_airbound/info")
+        info = await ha.supervisor(f"/addons/{await addon_slug(ha)}/info")
         me = await ha.call({"type": "auth/current_user"})
         session = await ha.supervisor("/ingress/session", "post", {"user_id": me["id"]})
     return f"{LOCAL_URL}{info['ingress_url']}", session["session"]

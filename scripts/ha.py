@@ -66,6 +66,15 @@ class HA:
         return await self.call(command)
 
 
+async def addon_slug(ha: HA) -> str:
+    """The installed AirBound add-on's slug (it depends on the repository it came from)."""
+    addons = (await ha.supervisor("/addons"))["addons"]
+    for addon in addons:
+        if addon["name"] == "AirBound":
+            return addon["slug"]
+    raise HAError("AirBound isn't installed")
+
+
 async def _cli(commands: list[str]) -> None:
     async with HA() as ha:
         for raw in commands:
