@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.png" alt="AirBound: secure remote access for Home Assistant" width="800"></p>
+
 # AirBound
 
 > [!WARNING]
