@@ -1,0 +1,11 @@
+# Local secrets: the test VM's address and Home Assistant token
+.env
+.env.*
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Test output (screenshots can show real addresses)
+test-results/

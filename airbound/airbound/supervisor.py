@@ -1,0 +1,68 @@
+"""Clients for the Supervisor API and Home Assistant's WebSocket API."""
+
+from __future__ import annotations
+
+import itertools
+import os
+from typing import Any
+
+from aiohttp import ClientSession, WSMsgType
+
+SUPERVISOR_URL = "http://supervisor"
+CORE_WS_URL = "ws://supervisor/core/websocket"
+
+
+class SupervisorError(Exception):
+    """Raised when the Supervisor or Home Assistant returns an error."""
+
+
+class Supervisor:
+    def __init__(self, session: ClientSession, token: str | None = None) -> None:
+        self._session = session
+        self._token = token or os.environ.get("SUPERVISOR_TOKEN", "")
+        self._ids = itertools.count(1)
+
+    @property
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._token}"}
+
+    async def get(self, path: str) -> Any:
+        async with self._session.get(f"{SUPERVISOR_URL}{path}", headers=self._headers) as resp:
+            body = await resp.json()
+        if body.get("result") != "ok":
+            raise SupervisorError(body.get("message", f"GET {path} failed"))
+        return body.get("data")
+
+    async def core_post(self, path: str, data: dict) -> None:
+        """POST to Home Assistant's REST API (states, events, services) through the Supervisor."""
+        async with self._session.post(f"{SUPERVISOR_URL}/core/api{path}", headers=self._headers, json=data) as resp:
+            if resp.status >= 400:
+                raise SupervisorError(f"POST {path} failed: {resp.status}")
+
+    async def ha_upstream(self) -> str:
+        """host:port where Caddy and the guard reach Home Assistant."""
+        info = await self.get("/core/info")
+        return f"homeassistant:{info['port']}"
+
+    async def ws(self, *commands: dict[str, Any]) -> list[Any]:
+        """Run Home Assistant WebSocket commands in order and return their results."""
+        results = []
+        async with self._session.ws_connect(CORE_WS_URL) as ws:
+            await ws.receive_json()  # auth_required
+            await ws.send_json({"type": "auth", "access_token": self._token})
+            if (await ws.receive_json()).get("type") != "auth_ok":
+                raise SupervisorError("Home Assistant rejected the Supervisor token")
+            for command in commands:
+                msg_id = next(self._ids)
+                await ws.send_json({"id": msg_id, **command})
+                while True:
+                    msg = await ws.receive()
+                    if msg.type != WSMsgType.TEXT:
+                        raise SupervisorError("WebSocket closed unexpectedly")
+                    data = msg.json()
+                    if data.get("id") == msg_id and data.get("type") == "result":
+                        break
+                if not data.get("success"):
+                    raise SupervisorError(data.get("error", {}).get("message", "command failed"))
+                results.append(data.get("result"))
+        return results

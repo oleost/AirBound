@@ -1,0 +1,144 @@
+"""Caddy configuration and process management."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from collections.abc import Callable
+from pathlib import Path
+
+from .crowdsec import LAPI as CROWDSEC_LAPI
+from .relay import RELAY_LISTENER
+from .settings import Settings
+
+_LOGGER = logging.getLogger(__name__)
+
+CADDYFILE = Path("/data/Caddyfile")
+ACCESS_LOG = Path("/data/logs/access.log")
+GUARD_ADDRESS = "127.0.0.1:8100"
+
+
+def _site(address: str, settings: Settings, ha_upstream: str, crowdsec: bool, bind: str = "") -> str:
+    # {$VAR} is filled in when the config is loaded, so a new token applies on reload.
+    if settings.tls == "internal":
+        tls = "tls internal"
+    else:
+        tls = "tls {\n\t\tdns cloudflare {$CF_API_TOKEN}\n\t}"
+    bind_line = f"\n\tbind {bind}" if bind else ""
+    bouncer = "\n\t\t\tcrowdsec" if crowdsec else ""
+    return f"""{address} {{{bind_line}
+	{tls}
+
+	log {{
+		output file {ACCESS_LOG} {{
+			roll_size 10MiB
+			roll_keep 5
+		}}
+		format json
+	}}
+
+	@airbound host {settings.fqdn}
+	handle @airbound {{
+		route {{{bouncer}
+			header Strict-Transport-Security "max-age=31536000"
+			@login path /auth/login_flow /auth/login_flow/*
+			reverse_proxy @login {GUARD_ADDRESS}
+			reverse_proxy {ha_upstream}
+		}}
+	}}
+
+	handle {{
+		abort
+	}}
+}}
+"""
+
+
+def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = False) -> str:
+    """Build the Caddyfile for the current settings.
+
+    The site is a wildcard for the whole domain, so only ``*.domain`` is ever
+    issued and the real hostname never shows up in Certificate Transparency
+    logs. Requests for any other name under the domain are dropped.
+
+    In relay mode a second, local-only listener takes traffic from frpc. It
+    reads the PROXY protocol header frpc adds, so HA sees the real client.
+    """
+    relay_host, relay_port = RELAY_LISTENER.split(":")
+    # The servers block must name the exact listener address, bind host included.
+    relay_server = (
+        f"""
+	servers {relay_host}:{relay_port} {{
+		listener_wrappers {{
+			proxy_protocol {{
+				allow 127.0.0.1/32
+			}}
+			tls
+		}}
+	}}"""
+        if settings.mode == "relay"
+        else ""
+    )
+    # Without hard fails, Caddy keeps serving if CrowdSec is down; it never locks anyone out.
+    bouncer = (
+        f"""
+	crowdsec {{
+		api_url http://{CROWDSEC_LAPI}
+		api_key {{$CROWDSEC_API_KEY}}
+		ticker_interval 15s
+	}}"""
+        if crowdsec
+        else ""
+    )
+    config = f"""{{
+	admin 127.0.0.1:2019
+	auto_https disable_redirects
+	skip_install_trust
+	storage file_system /data/caddy
+	servers {{
+		protocols h1 h2
+	}}{relay_server}{bouncer}
+}}
+
+{_site(f"*.{settings.domain}:443", settings, ha_upstream, crowdsec)}"""
+    if settings.mode == "relay":
+        config += "\n" + _site(f"*.{settings.domain}:{relay_port}", settings, ha_upstream, crowdsec, bind=relay_host)
+    return config
+
+
+class Caddy:
+    """Runs Caddy as a child process and reloads it on config changes."""
+
+    def __init__(self, bouncer_key: Callable[[], str] = lambda: "") -> None:
+        self._process: asyncio.subprocess.Process | None = None
+        self._bouncer_key = bouncer_key
+
+    @property
+    def running(self) -> bool:
+        return self._process is not None and self._process.returncode is None
+
+    async def apply(self, settings: Settings, ha_upstream: str) -> None:
+        ACCESS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        key = self._bouncer_key()
+        CADDYFILE.write_text(render_caddyfile(settings, ha_upstream, crowdsec=bool(key)))
+        env = {**os.environ, "CF_API_TOKEN": settings.cloudflare_token, "CROWDSEC_API_KEY": key}
+        if self.running:
+            await self._run("caddy", "reload", "--config", str(CADDYFILE), "--adapter", "caddyfile", env=env)
+            return
+        self._process = await asyncio.create_subprocess_exec(
+            "caddy", "run", "--config", str(CADDYFILE), "--adapter", "caddyfile", env=env
+        )
+        _LOGGER.info("Caddy started for %s", settings.fqdn)
+
+    async def stop(self) -> None:
+        if self.running:
+            assert self._process is not None
+            self._process.terminate()
+            await self._process.wait()
+
+    @staticmethod
+    async def _run(*cmd: str, env: dict[str, str]) -> None:
+        proc = await asyncio.create_subprocess_exec(*cmd, env=env)
+        if await proc.wait() != 0:
+            raise RuntimeError(f"{' '.join(cmd[:2])} failed")
