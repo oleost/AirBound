@@ -9,6 +9,7 @@ import signal
 from aiohttp import ClientSession, web
 
 from .caddy import GUARD_ADDRESS, Caddy
+from .certwatch import CertWatch
 from .crowdsec import CrowdSec, log_failed_login
 from .golive import GoLive, keep_dns_current, keep_port_open
 from .guard import AuthGuard
@@ -36,7 +37,8 @@ async def main() -> None:
     crowdsec = CrowdSec()
     caddy = Caddy(bouncer_key=lambda: crowdsec.bouncer_key)
     frpc = Frpc()
-    reporter = Reporter(store, supervisor, session, frpc, crowdsec)
+    certwatch = CertWatch()
+    reporter = Reporter(store, supervisor, session, frpc, crowdsec, certwatch)
 
     def on_guard_event(event: str, info: dict) -> None:
         reporter.on_guard_event(event, info)
@@ -45,7 +47,7 @@ async def main() -> None:
 
     guard = AuthGuard(f"http://{ha_upstream}", require_mfa=lambda: store.settings.require_mfa, listener=on_guard_event)
     golive = GoLive(store, caddy, frpc, session, ha_upstream)
-    panel = Panel(store, supervisor, session, caddy, frpc, crowdsec, guard, golive, ha_upstream)
+    panel = Panel(store, supervisor, session, caddy, frpc, crowdsec, certwatch, guard, golive, ha_upstream)
 
     runners = []
     guard_host, guard_port = GUARD_ADDRESS.split(":")

@@ -19,6 +19,7 @@ from aiohttp import ClientSession
 from cryptography import x509
 
 from . import checks, network
+from .certwatch import CertWatch
 from .crowdsec import CrowdSec
 from .relay import Frpc
 from .settings import Store
@@ -28,6 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 
 STATE_FILE = Path("/data/reporting.json")
 STATUS_INTERVAL = 300
+CT_INTERVAL = 6 * 3600
 CERT_WARNING_DAYS = 14
 PREFIX = "airbound"
 
@@ -43,13 +45,15 @@ def remote_login_message(username: str, ip: str) -> str:
 
 class Reporter:
     def __init__(
-        self, store: Store, supervisor: Supervisor, session: ClientSession, frpc: Frpc, crowdsec: CrowdSec | None = None
+        self, store: Store, supervisor: Supervisor, session: ClientSession, frpc: Frpc, crowdsec: CrowdSec | None = None,
+        certwatch: CertWatch | None = None,
     ) -> None:
         self._store = store
         self._supervisor = supervisor
         self._session = session
         self._frpc = frpc
         self._crowdsec = crowdsec
+        self._certwatch = certwatch
         self._state = self._load()
         self._tasks: set[asyncio.Task] = set()
         self._problems: list[str] = []
@@ -166,7 +170,9 @@ class Reporter:
 
     async def publish_status(self) -> None:
         settings = self._store.settings
-        results = await checks.run_all(settings, self._supervisor, self._session, self._frpc, self._crowdsec, None)
+        results = await checks.run_all(
+            settings, self._supervisor, self._session, self._frpc, self._crowdsec, None, self._certwatch
+        )
         problems = [c for c in results if not c.ok]
         live = settings.live
         status = "Off" if not live else ("OK" if not problems else "Needs attention")
@@ -220,9 +226,39 @@ class Reporter:
                 "certificate",
             )
 
+    async def watch_certificates(self) -> bool:
+        """Scan the CT logs; returns whether a scan actually ran."""
+        settings = self._store.settings
+        if not (self._certwatch and settings.live and settings.tls == "cloudflare"):
+            return False
+        found = await self._certwatch.scan(self._session, settings.domain, settings.fqdn)
+        if found is None:
+            return False
+        known = set(self._state.setdefault("reported_certs", []))
+        new = [c for c in found or [] if c["id"] not in known]
+        if new:
+            lines = "\n".join(f"- {c['issuer']}, valid from {c['not_before']}: {c['url']}" for c in new)
+            await self._notify(
+                "Unexpected certificate",
+                f"Certificate Transparency logs show a certificate for {settings.fqdn} that AirBound didn't order:\n"
+                f"{lines}\n\nSomeone may be trying to intercept your traffic. Turn off remote access until you know why.",
+                "unexpected_certificate",
+            )
+            self._state["reported_certs"] = sorted(known | {c["id"] for c in new})
+            self._save()
+        return True
+
     async def run(self) -> None:
         await asyncio.sleep(10)  # let the proxy start first
+        last_ct_scan = None
         while True:
+            now = asyncio.get_running_loop().time()
+            if last_ct_scan is None or now - last_ct_scan > CT_INTERVAL:
+                try:
+                    if await self.watch_certificates():
+                        last_ct_scan = now
+                except Exception:
+                    _LOGGER.exception("Certificate Transparency check failed")
             try:
                 await self.publish_status()
             except Exception:

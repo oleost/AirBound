@@ -10,6 +10,8 @@ from pathlib import Path
 from aiohttp import ClientSession
 
 from . import network, relay, users
+from .certwatch import CertWatch
+from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
 from .settings import Settings
 from .supervisor import Supervisor
@@ -135,6 +137,35 @@ async def check_protection(crowdsec: CrowdSec) -> Check:
     return Check("protection", "Attack protection", True, f"CrowdSec is watching for attacks. {blocked}")
 
 
+async def check_certificate_lock(settings: Settings, session: ClientSession, certwatch: CertWatch | None) -> Check:
+    """Nobody but AirBound may hold a certificate for the hostname."""
+    title = "Certificate lock"
+    if certwatch and certwatch.unexpected:
+        issuers = ", ".join(sorted({c["issuer"].split("CN=")[-1] for c in certwatch.unexpected}))
+        return Check(
+            "cert_lock",
+            title,
+            False,
+            f"A certificate for {settings.fqdn} was issued by {issuers}, and AirBound didn't order it. "
+            "Someone may be trying to intercept your traffic. Turn off remote access until you know why.",
+        )
+    try:
+        locked = await Cloudflare(session, settings.cloudflare_token).certificates_locked(settings.zone_id, settings.fqdn)
+    except CloudflareError:
+        locked = None
+    if locked is False:
+        return Check(
+            "cert_lock",
+            title,
+            False,
+            f"The DNS record that stops others from getting a certificate for {settings.fqdn} is missing.",
+            "Go live again",
+            "go_live",
+        )
+    watched = " Certificate logs show nothing unexpected." if certwatch and certwatch.checked else ""
+    return Check("cert_lock", title, True, f"Only AirBound can get a certificate for this address.{watched}")
+
+
 async def run_all(
     settings: Settings,
     supervisor: Supervisor,
@@ -142,6 +173,7 @@ async def run_all(
     frpc: relay.Frpc,
     crowdsec: CrowdSec,
     user_id: str | None,
+    certwatch: CertWatch | None = None,
 ) -> list[Check]:
     people = await users.list_people(supervisor, user_id)
     (http,) = await supervisor.ws({"type": "http/config"})
@@ -159,4 +191,5 @@ async def run_all(
         results.append(await check_certificate(settings))
         if settings.tls == "cloudflare":
             results.append(await check_dns(settings, session))
+            results.append(await check_certificate_lock(settings, session, certwatch))
     return results

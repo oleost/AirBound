@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 from dataclasses import asdict, dataclass
 
@@ -81,13 +82,21 @@ class GoLive:
             ip = await relay.resolve_ipv4(settings.relay_host)
             if not ip:
                 raise RuntimeError(f"AirBound couldn't find the address of {settings.relay_host}. Check the relay address.")
+            if not ipaddress.ip_address(ip).is_global:
+                # A public name pointing at a private address breaks remote access for everyone.
+                raise RuntimeError(
+                    f"The relay address {ip} is a private address, so nobody outside your network could reach it. "
+                    "Enter the relay server's public IP address."
+                )
         else:
             ip = await network.public_ip(self._session)
             if not ip:
                 raise RuntimeError("AirBound couldn't find your internet address. Check that Home Assistant has internet access.")
-        await Cloudflare(self._session, settings.cloudflare_token).upsert_a_record(settings.zone_id, settings.fqdn, ip)
+        cloudflare = Cloudflare(self._session, settings.cloudflare_token)
+        await cloudflare.upsert_a_record(settings.zone_id, settings.fqdn, ip)
+        await cloudflare.lock_certificates(settings.zone_id, settings.fqdn)
         self._store.update(public_ip=ip)
-        task.detail = f"{settings.fqdn} → {ip}"
+        task.detail = f"{settings.fqdn} → {ip}, certificates locked to AirBound"
 
     async def _proxy(self, task: Task) -> None:
         await self._caddy.apply(self._store.settings, self._ha_upstream)

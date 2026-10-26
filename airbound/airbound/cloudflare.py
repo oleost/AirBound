@@ -54,6 +54,36 @@ class Cloudflare:
             )
         return sorted(zones, key=lambda z: z["name"])
 
+    async def lock_certificates(self, zone_id: str, name: str) -> None:
+        """Forbid every CA from issuing a certificate for exactly this hostname.
+
+        AirBound's own certificate is a wildcard for the domain, which CAs check
+        against CAA on the domain itself, so this record doesn't affect it or any
+        other name in the zone. It stops anyone who controls where traffic for
+        the hostname goes (such as a relay operator) from getting a certificate
+        for it through an HTTP-01 or TLS-ALPN-01 check.
+        """
+        existing = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "CAA", "name": name})
+        for record in existing:
+            data = record.get("data") or {}
+            if data.get("tag") == "issue" and data.get("value") == ";":
+                return
+        await self._request(
+            "POST",
+            f"/zones/{zone_id}/dns_records",
+            json={
+                "type": "CAA",
+                "name": name,
+                "data": {"flags": 0, "tag": "issue", "value": ";"},
+                "ttl": 3600,
+                "comment": "Managed by AirBound: no certificates for this exact name",
+            },
+        )
+
+    async def certificates_locked(self, zone_id: str, name: str) -> bool:
+        records = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "CAA", "name": name})
+        return any((r.get("data") or {}).get("value") == ";" for r in records)
+
     async def upsert_a_record(self, zone_id: str, name: str, ip: str) -> None:
         """Point name at ip, DNS only (grey cloud) so Cloudflare never sees the traffic."""
         existing = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "A", "name": name})

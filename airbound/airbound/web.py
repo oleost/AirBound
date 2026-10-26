@@ -11,6 +11,7 @@ from aiohttp import ClientSession, web
 
 from . import checks, ha_settings, network, portmap, relay, users
 from .caddy import Caddy
+from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
 from .golive import GoLive
@@ -51,6 +52,7 @@ class Panel:
         caddy: Caddy,
         frpc: relay.Frpc,
         crowdsec: CrowdSec,
+        certwatch: CertWatch,
         guard: AuthGuard,
         golive: GoLive,
         ha_upstream: str,
@@ -61,6 +63,7 @@ class Panel:
         self._caddy = caddy
         self._frpc = frpc
         self._crowdsec = crowdsec
+        self._certwatch = certwatch
         self._guard = guard
         self._golive = golive
         self._ha_upstream = ha_upstream
@@ -279,7 +282,7 @@ class Panel:
 
     async def status(self, request: web.Request) -> web.Response:
         results = await checks.run_all(
-            self._store.settings, self._supervisor, self._session, self._frpc, self._crowdsec, user_id(request)
+            self._store.settings, self._supervisor, self._session, self._frpc, self._crowdsec, user_id(request), self._certwatch
         )
         return web.json_response(
             {
