@@ -19,17 +19,20 @@ ACCESS_LOG = Path("/data/logs/access.log")
 GUARD_ADDRESS = "127.0.0.1:8100"
 
 
-def _site(address: str, settings: Settings, ha_upstream: str, crowdsec: bool, bind: str = "") -> str:
-    # {$VAR} is filled in when the config is loaded, so a new token applies on reload.
-    if settings.tls == "internal":
-        tls = "tls internal"
-    else:
-        tls = "tls {\n\t\tdns cloudflare {$CF_API_TOKEN}\n\t}"
-    bind_line = f"\n\tbind {bind}" if bind else ""
+def _site(address: str, settings: Settings, ha_upstream: str, crowdsec: bool, guard_forged: bool = False) -> str:
     bouncer = "\n\t\t\tcrowdsec" if crowdsec else ""
-    return f"""{address} {{{bind_line}
-	{tls}
-
+    # On the relay listener every real client comes from the internet. A PROXY
+    # header claiming a private or loopback address can only be forged (by the
+    # relay's operator or someone posing as the relay); drop it, so nobody can
+    # pass for a device on the home network.
+    forged = (
+        """
+			@forged_local remote_ip private_ranges
+			abort @forged_local"""
+        if guard_forged
+        else ""
+    )
+    return f"""{address} {{
 	log {{
 		output file {ACCESS_LOG} {{
 			roll_size 10MiB
@@ -40,7 +43,7 @@ def _site(address: str, settings: Settings, ha_upstream: str, crowdsec: bool, bi
 
 	@airbound host {settings.fqdn}
 	handle @airbound {{
-		route {{{bouncer}
+		route {{{forged}{bouncer}
 			header Strict-Transport-Security "max-age=31536000"
 			@login path /auth/login_flow /auth/login_flow/*
 			reverse_proxy @login {GUARD_ADDRESS}
@@ -63,16 +66,18 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
     logs. Requests for any other name under the domain are dropped.
 
     In relay mode a second, local-only listener takes traffic from frpc. It
-    reads the PROXY protocol header frpc adds, so HA sees the real client.
+    reads the PROXY protocol header frpc adds, so HA sees the real client, and
+    drops headers that claim a private address.
+
+    How certificates are issued is set globally (acme_dns / local_certs), so
+    the two site blocks share one certificate policy; per-site tls blocks for
+    the same wildcard would be two policies, which Caddy refuses.
     """
     _relay_host, relay_port = RELAY_LISTENER.split(":")
-    # One site block for both listeners: two blocks for the same wildcard would be
-    # two certificate policies for one name, which Caddy refuses. The relay port
-    # isn't published outside the container, and PROXY headers are trusted only
-    # from frpc on 127.0.0.1. The servers block must name the exact listener address.
-    addresses = f"*.{settings.domain}:443"
-    if settings.mode == "relay":
-        addresses += f", *.{settings.domain}:{relay_port}"
+    # {$VAR} is filled in when the config is loaded, so a new token applies on reload.
+    issuing = "local_certs" if settings.tls == "internal" else "acme_dns cloudflare {$CF_API_TOKEN}"
+    relay = settings.mode == "relay"
+    # The servers block must name the exact listener address.
     relay_server = (
         f"""
 	servers :{relay_port} {{
@@ -83,7 +88,7 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
 			tls
 		}}
 	}}"""
-        if settings.mode == "relay"
+        if relay
         else ""
     )
     # Without hard fails, Caddy keeps serving if CrowdSec is down; it never locks anyone out.
@@ -102,12 +107,17 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
 	auto_https disable_redirects
 	skip_install_trust
 	storage file_system /data/caddy
+	{issuing}
 	servers {{
 		protocols h1 h2
 	}}{relay_server}{bouncer}
 }}
 
-{_site(addresses, settings, ha_upstream, crowdsec)}"""
+{_site(f"*.{settings.domain}:443", settings, ha_upstream, crowdsec)}"""
+    if relay:
+        # The relay port isn't published outside the container, and PROXY headers
+        # are trusted only from frpc on 127.0.0.1.
+        config += "\n" + _site(f"*.{settings.domain}:{relay_port}", settings, ha_upstream, crowdsec, guard_forged=True)
     return config
 
 

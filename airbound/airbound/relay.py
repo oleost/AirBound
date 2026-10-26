@@ -4,19 +4,32 @@ The VPS runs frps and accepts traffic for the public port. The add-on runs frpc,
 which keeps an outgoing connection to it, so the home router needs no open ports.
 Traffic stays encrypted end to end: frp only moves TLS bytes, and the certificate
 lives at home. frpc adds a PROXY protocol header so Caddy knows the real client.
+
+The tunnel itself is pinned: AirBound makes a small private CA and a server
+certificate for the relay, ships both inside the install command, and frpc only
+trusts that CA. Without it, anyone between Home Assistant and the relay could
+pose as the relay and open connections into Home Assistant with made-up client
+addresses.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import datetime
+import ipaddress
 import logging
 import os
+import re
 import secrets
 import socket
 from pathlib import Path
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
 from .settings import Settings
 
@@ -26,19 +39,86 @@ FRPC_CONFIG = Path("/data/frpc.toml")
 INSTALL_TEMPLATE = Path(__file__).parent / "relay_install.sh"
 RELAY_LISTENER = "127.0.0.1:8444"  # Caddy listener that expects a PROXY protocol header
 ADMIN = "127.0.0.1:7400"  # frpc's local status API
+PKI_DIR = Path("/data/relay")
+SERVER_NAME = "airbound-relay"  # the name frpc expects in the relay's certificate
+HOST_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
 
 
 def new_token() -> str:
     return secrets.token_hex(24)
 
 
-def install_command(settings: Settings) -> str:
+def valid_relay_host(host: str) -> bool:
+    """An IP address or a DNS name: nothing that could break out of the frpc config."""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return bool(HOST_RE.match(host))
+
+
+def _pem(obj) -> str:
+    if isinstance(obj, x509.Certificate):
+        return obj.public_bytes(serialization.Encoding.PEM).decode()
+    return obj.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    ).decode()
+
+
+def make_pki() -> dict[str, str]:
+    """A private CA and a server certificate for the relay, as PEM strings."""
+    now = datetime.datetime.now(datetime.UTC)
+    later = now + datetime.timedelta(days=3650)
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "AirBound relay CA")])
+    ca = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(later)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    server_key = ec.generate_private_key(ec.SECP256R1())
+    server = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, SERVER_NAME)]))
+        .issuer_name(ca_name)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(later)
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(SERVER_NAME)]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    return {"ca.crt": _pem(ca), "server.crt": _pem(server), "server.key": _pem(server_key)}
+
+
+def ensure_pki(directory: Path = PKI_DIR, renew: bool = False) -> dict[str, str]:
+    """Load the relay certificates, creating them the first time (or when renewing the key)."""
+    files = ("ca.crt", "server.crt", "server.key")
+    if renew or not all((directory / f).exists() for f in files):
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, pem in make_pki().items():
+            path = directory / name
+            path.write_text(pem)
+            os.chmod(path, 0o600)
+    return {f: (directory / f).read_text() for f in files}
+
+
+def install_command(settings: Settings, pki: dict[str, str]) -> str:
     """One line to paste on the VPS. The script is embedded, so nothing else is fetched from us."""
     script = (
         INSTALL_TEMPLATE.read_text()
         .replace("__TOKEN__", settings.relay_token)
         .replace("__CONTROL_PORT__", str(settings.relay_control_port))
         .replace("__PUBLIC_PORT__", str(settings.external_port))
+        .replace("__SERVER_CERT__", pki["server.crt"].strip())
+        .replace("__SERVER_KEY__", pki["server.key"].strip())
     )
     encoded = base64.b64encode(script.encode()).decode()
     return f"echo {encoded} | base64 -d | sudo sh"
@@ -52,6 +132,8 @@ serverPort = {settings.relay_control_port}
 auth.method = "token"
 auth.token = "{settings.relay_token}"
 transport.tls.enable = true
+transport.tls.trustedCaFile = "{(PKI_DIR / "ca.crt").as_posix()}"
+transport.tls.serverName = "{SERVER_NAME}"
 loginFailExit = false
 log.to = "console"
 log.level = "warn"
@@ -89,6 +171,7 @@ class Frpc:
 
     async def apply(self, settings: Settings) -> None:
         await self.stop()
+        ensure_pki()
         FRPC_CONFIG.write_text(render_frpc(settings))
         os.chmod(FRPC_CONFIG, 0o600)
         self._process = await asyncio.create_subprocess_exec("frpc", "-c", str(FRPC_CONFIG))

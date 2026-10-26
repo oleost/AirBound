@@ -18,7 +18,7 @@ def test_login_flow_goes_through_guard():
     caddyfile = render_caddyfile(Settings(domain="example.com", hostname="h", tls="internal"), "homeassistant:80")
     assert "@login path /auth/login_flow /auth/login_flow/*" in caddyfile
     assert "reverse_proxy @login 127.0.0.1:8100" in caddyfile
-    assert "tls internal" in caddyfile
+    assert "local_certs" in caddyfile
 
 
 def test_settings_configured():

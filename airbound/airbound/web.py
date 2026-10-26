@@ -168,7 +168,7 @@ class Panel:
         settings = self._store.settings
         return web.json_response(
             {
-                "command": relay.install_command(settings),
+                "command": relay.install_command(settings, relay.ensure_pki()),
                 "host": settings.relay_host,
                 "control_port": settings.relay_control_port,
                 "public_port": settings.external_port,
@@ -177,7 +177,7 @@ class Panel:
 
     async def relay_host(self, request: web.Request) -> web.Response:
         host = ((await request.json()).get("host") or "").strip().lower()
-        if not host or " " in host or "/" in host:
+        if not relay.valid_relay_host(host):
             return web.json_response({"error": "Enter the server's IP address, for example 203.0.113.25."}, status=400)
         ip = await relay.resolve_ipv4(host)
         if not ip:
@@ -189,6 +189,7 @@ class Panel:
         return web.json_response({"host": host, "ip": ip, "reachable": reachable, "public": public})
 
     async def relay_new_key(self, _request: web.Request) -> web.Response:
+        relay.ensure_pki(renew=True)
         self._store.update(relay_token=relay.new_token(), live=False)
         return await self.relay_info(_request)
 
@@ -211,6 +212,10 @@ class Panel:
     async def domain(self, request: web.Request) -> web.Response:
         body = await request.json()
         settings = self._store.settings
+        # Only a zone the token can see: the name ends up in Caddy's configuration.
+        zones = await Cloudflare(self._session, settings.cloudflare_token).zones()
+        if not any(z["id"] == body.get("id") and z["name"] == body.get("name") for z in zones):
+            return web.json_response({"error": "Pick one of the domains in the list."}, status=400)
         hostname = (body.get("hostname") or "").strip().lower()
         if hostname and not valid_hostname(hostname):
             return web.json_response(
@@ -345,6 +350,8 @@ class Panel:
         if body.get("tls") in ("cloudflare", "internal"):  # "internal" is for automated tests only
             changes["tls"] = body["tls"]
         if "domain" in body and "hostname" in body and body.get("tls") == "internal":
+            if not (relay.valid_relay_host(body["domain"]) and valid_hostname(body["hostname"])):
+                return web.json_response({"error": "Invalid domain or hostname."}, status=400)
             changes.update(domain=body["domain"], hostname=body["hostname"], live=False)
         self._store.update(**changes)
         return web.json_response({"settings": self._store.settings.public()})

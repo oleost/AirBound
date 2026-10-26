@@ -5,9 +5,8 @@ from __future__ import annotations
 import ipaddress
 import socket
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from . import network, relay, users
 from .certwatch import CertWatch
@@ -16,8 +15,8 @@ from .crowdsec import CrowdSec
 from .settings import Settings
 from .supervisor import Supervisor
 
-HA_CONFIG = Path("/homeassistant")
 ADDON_NETWORK = ipaddress.ip_network("172.30.33.0/24")
+OUTSIDE_TEST_ADDRESS = "198.51.100.23"  # documentation range (RFC 5737): stands in for any outsider
 
 
 @dataclass
@@ -65,16 +64,42 @@ def check_http(config: dict) -> Check:
     return Check("http", "Home Assistant settings", False, detail[0].upper() + detail[1:] + ".", "Fix settings", "ha_settings")
 
 
-def check_trusted_networks(configuration_yaml: str) -> Check:
-    if "trusted_networks" not in configuration_yaml:
-        return Check("trusted_networks", "Password for every login", True, "Every login needs a password.")
+def check_password_login(providers: list[dict] | None) -> Check:
+    """Login methods offered to an outside address; anything but a password one skips password and MFA."""
+    title = "Password for every login"
+    if providers is None:
+        return Check("trusted_networks", title, True, "Couldn't ask Home Assistant right now; will check again.")
+    others = sorted({p.get("type", "") for p in providers if p.get("type") != "homeassistant"})
+    if not others:
+        return Check("trusted_networks", title, True, "Every login from outside needs a password.")
     return Check(
         "trusted_networks",
-        "Password for every login",
+        title,
         False,
-        "Your configuration.yaml has a \"trusted_networks\" login, which lets people in without password or MFA. "
-        "Remove it from configuration.yaml and restart Home Assistant.",
+        f"Home Assistant offers outside visitors a login without password ({', '.join(others)}). "
+        "That skips both password and MFA. Remove it (usually trusted_networks in configuration.yaml) "
+        "and restart Home Assistant.",
     )
+
+
+async def outside_login_providers(session: ClientSession, ha_upstream: str) -> list[dict] | None:
+    """The login methods Home Assistant shows to a visitor from the internet.
+
+    HA lists only the providers the caller may use, and trusts X-Forwarded-For
+    from AirBound, so asking with an outside test address shows exactly what an
+    outsider would get, wherever the configuration lives.
+    """
+    try:
+        async with session.get(
+            f"http://{ha_upstream}/auth/providers",
+            headers={"X-Forwarded-For": OUTSIDE_TEST_ADDRESS},
+            timeout=ClientTimeout(total=5),
+        ) as resp:
+            if resp.status != 200:
+                return None
+            return (await resp.json()).get("providers", [])
+    except (ClientError, TimeoutError, ValueError):
+        return None
 
 
 async def check_certificate(settings: Settings) -> Check:
@@ -177,11 +202,11 @@ async def run_all(
 ) -> list[Check]:
     people = await users.list_people(supervisor, user_id)
     (http,) = await supervisor.ws({"type": "http/config"})
-    config_yaml = HA_CONFIG / "configuration.yaml"
+    providers = await outside_login_providers(session, await supervisor.ha_upstream())
     results = [
         check_mfa(people),
         check_http(http.get("stable") or {}),
-        check_trusted_networks(config_yaml.read_text() if config_yaml.exists() else ""),
+        check_password_login(providers),
     ]
     if settings.live:
         if crowdsec:

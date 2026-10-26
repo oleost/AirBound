@@ -1,4 +1,4 @@
-from airbound.checks import check_http, check_mfa, check_trusted_networks
+from airbound.checks import check_http, check_mfa, check_password_login
 
 GOOD_HTTP = {
     "use_x_forwarded_for": True,
@@ -41,6 +41,8 @@ def test_http_too_broad_proxy_fails():
     assert "broader" in result.detail
 
 
-def test_trusted_networks():
-    assert check_trusted_networks("default_config:\n").ok
-    assert not check_trusted_networks("homeassistant:\n  auth_providers:\n    - type: trusted_networks\n").ok
+def test_password_login_for_outsiders():
+    assert check_password_login([{"type": "homeassistant", "id": None, "name": "Home Assistant Local"}]).ok
+    result = check_password_login([{"type": "homeassistant"}, {"type": "trusted_networks"}])
+    assert not result.ok and "trusted_networks" in result.detail
+    assert check_password_login(None).ok  # unknown is not an alarm

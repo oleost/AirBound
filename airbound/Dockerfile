@@ -1,12 +1,12 @@
-FROM caddy:2-builder AS caddy-build
+FROM caddy:2.11.7-builder AS caddy-build
 RUN xcaddy build \
-    --with github.com/caddy-dns/cloudflare \
+    --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.14.1 \
     --output /usr/bin/caddy
 
 FROM crowdsecurity/crowdsec:v1.8.1 AS crowdsec
 
-FROM python:3.13-alpine AS frpc
+FROM python:3.13.9-alpine3.22 AS frpc
 ARG BUILD_ARCH=amd64
 ARG FRP_VERSION=0.71.0
 RUN case "$BUILD_ARCH" in \
@@ -19,7 +19,7 @@ RUN case "$BUILD_ARCH" in \
     && tar -xzf /tmp/frp.tgz -C /tmp \
     && mv /tmp/frp_${FRP_VERSION}_linux_${ARCH}/frpc /usr/local/bin/frpc
 
-FROM python:3.13-alpine
+FROM python:3.13.9-alpine3.22
 ARG BUILD_VERSION=dev
 ENV AIRBOUND_VERSION=$BUILD_VERSION
 COPY --from=caddy-build /usr/bin/caddy /usr/local/bin/caddy

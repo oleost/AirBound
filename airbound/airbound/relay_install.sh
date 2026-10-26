@@ -31,17 +31,27 @@ install -m 0755 "$TMP/$NAME/frps" /usr/local/bin/airbound-relay
 
 id airbound >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin airbound
 mkdir -p /etc/airbound
+# The relay's certificate, made by your AirBound: AirBound only talks to this relay.
+cat > /etc/airbound/relay.crt <<'CERT'
+__SERVER_CERT__
+CERT
+cat > /etc/airbound/relay.key <<'KEY'
+__SERVER_KEY__
+KEY
 cat > /etc/airbound/relay.toml <<EOF
 bindPort = $CONTROL_PORT
 auth.method = "token"
 auth.token = "$TOKEN"
 transport.tls.force = true
+transport.tls.certFile = "/etc/airbound/relay.crt"
+transport.tls.keyFile = "/etc/airbound/relay.key"
 allowPorts = [{ single = $PUBLIC_PORT }]
 log.to = "console"
 log.level = "info"
 EOF
-chown root:airbound /etc/airbound/relay.toml
-chmod 0640 /etc/airbound/relay.toml
+chown root:airbound /etc/airbound/relay.toml /etc/airbound/relay.crt /etc/airbound/relay.key
+chmod 0640 /etc/airbound/relay.toml /etc/airbound/relay.key
+chmod 0644 /etc/airbound/relay.crt
 
 cat > /etc/systemd/system/airbound-relay.service <<EOF
 [Unit]
