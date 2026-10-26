@@ -66,7 +66,8 @@ const enter = {
       view.restarting = false;
       render();
     }, 3000),
-  users: () => load(api("users"), (d) => Object.assign(view, d)),
+  // "Check again" also picks up two-step login turned on elsewhere, which may finish this step.
+  users: () => load(api("users").then(async (d) => (await refreshState(), d)), (d) => Object.assign(view, d)),
   relay: () => load(api("relay"), (d) => (view.relay = d)),
   hosted: () => followHosted(),
   go_live: () =>
@@ -915,6 +916,8 @@ const actions = {
   async "local-only"(el) {
     const d = await api(`users/${el.dataset.id}/local-only`, { local_only: el.dataset.value === "true" });
     Object.assign(view, d);
+    // The last person sorted out finishes this step and unlocks the next; the Continue button needs to know.
+    await refreshState();
     render();
   },
   "refresh-users"() {
