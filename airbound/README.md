@@ -1,6 +1,6 @@
 # AirBound
 
-**Work in progress: not ready for use.** Tested on a single system only, and settings can change between versions.
+**Early release.** AirBound works and is tested before every release, but it is young: expect rough edges and changes between versions.
 
 Secure remote access to Home Assistant from the Companion app and any browser, with no VPN. Choose AirBound's hosted relay (a thank-you for supporting the project on Patreon, 7-day free trial), your own small server, or your router.
 

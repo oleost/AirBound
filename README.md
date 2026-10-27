@@ -6,13 +6,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Home%20Assistant%20OS-add--on-41BDF5?logo=homeassistant&logoColor=white" alt="Home Assistant OS add-on">
-  <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental">
+  <img src="https://img.shields.io/badge/status-early%20release-orange" alt="Status: early release">
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-blue" alt="amd64 and aarch64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
-> [!WARNING]
-> **Work in progress: not ready for use.** AirBound is under active development and has only been tested on a single test system. Settings, behaviour and the setup wizard can change without notice, and there is no upgrade path between versions yet. Don't rely on it to protect a Home Assistant you care about.
+> [!NOTE]
+> **Early release.** AirBound works and is tested automatically before every release, but it is young and has few users so far. Expect rough edges, and changes to the setup wizard between versions. It is a hobby project with no warranty; keep another way to reach your home if you depend on remote access.
 
 **AirBound gives your Home Assistant its own secure web address.** It works in the Companion app on iPhone and Android and in any browser, at home, at work or on a borrowed computer, with nothing extra to install and no VPN. A step-by-step wizard in the Home Assistant sidebar does the whole setup, so you never need to read documentation.
 
