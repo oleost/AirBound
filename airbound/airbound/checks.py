@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from . import hosted, network, relay, users
+from . import ha_bans, hosted, network, relay, users
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
@@ -182,6 +182,9 @@ async def check_protection(crowdsec: CrowdSec) -> Check:
         )
     bans = await crowdsec.bans()
     blocked = f"{len(bans)} address{'es' if len(bans) != 1 else ''} blocked right now." if bans else "Nothing blocked right now."
+    permanent = len(ha_bans.read_bans())
+    if permanent:
+        blocked += f" Home Assistant has blocked {permanent} address{'es' if permanent != 1 else ''} for good; see Blocked addresses."
     return Check("protection", "Attack protection", True, f"CrowdSec is watching for attacks. {blocked}")
 
 

@@ -92,6 +92,7 @@ const enter = {
     poll(async () => {
       view.status = await api("status");
       view.bans = (await api("bans")).bans;
+      view.restarting = false;
       render();
     }, 15000),
 };
@@ -757,14 +758,26 @@ steps.overview = () => {
       view.bans?.length
         ? `<div class="card">
             <h2 style="margin-top:0">Blocked addresses</h2>
-            <p class="muted small">CrowdSec blocked these after repeated failed logins or attacks. Blocks end by themselves; unblock one only if you know it's yours.</p>
+            <p class="muted small">Blocked after repeated failed logins or attacks. CrowdSec's blocks end by themselves; Home Assistant's own blocks are permanent. Unblock an address only if you know it's yours, for example your mobile network after an app kept using an old login.</p>
+            ${view.restarting ? '<div class="notice info"><p><span class="spinner"></span> Home Assistant is restarting to lift the block. This takes about a minute.</p></div>' : ""}
             <div class="list">
               ${view.bans
-                .map(
-                  (b) => `<div class="row"><div class="grow"><span class="mono">${esc(b.ip)}</span>
-                    <div class="muted small">${esc(b.reason.replaceAll("-", " "))}${b.expires_in ? ` · ends in ${esc(b.expires_in)}` : ""}</div></div>
-                    <button class="link" data-action="unban" data-ip="${esc(b.ip)}">Unblock</button></div>`
-                )
+                .map((b) => {
+                  const permanent = b.source === "homeassistant";
+                  const confirm =
+                    view.confirmUnban === b.ip
+                      ? `<div class="notice warn"><p>Home Assistant only reads its blocks when it starts, so lifting this one restarts Home Assistant (about a minute).</p>
+                         <div class="actions"><button class="primary" data-action="unban" data-ip="${esc(b.ip)}" data-source="homeassistant">Unblock and restart</button><button data-action="unban-cancel">Cancel</button></div></div>`
+                      : "";
+                  const detail = permanent
+                    ? `${esc(b.reason)} · permanent${b.banned_at ? ` · since ${esc(new Date(b.banned_at).toLocaleString())}` : ""}`
+                    : `${esc(b.reason.replaceAll("-", " "))}${b.expires_in ? ` · ends in ${esc(b.expires_in)}` : ""}`;
+                  const button = permanent
+                    ? `<button class="link" data-action="unban-ask" data-ip="${esc(b.ip)}">Unblock</button>`
+                    : `<button class="link" data-action="unban" data-ip="${esc(b.ip)}">Unblock</button>`;
+                  return `<div class="row"><div class="grow"><span class="mono">${esc(b.ip)}</span>
+                    <div class="muted small">${detail}</div>${confirm}</div>${view.confirmUnban === b.ip ? "" : button}</div>`;
+                })
                 .join("")}
             </div>
           </div>`
@@ -1005,7 +1018,18 @@ const actions = {
     render();
   },
   async unban(el) {
-    view.bans = (await api("bans/unban", { ip: el.dataset.ip })).bans;
+    const answer = await api("bans/unban", { ip: el.dataset.ip, source: el.dataset.source || "crowdsec" });
+    view.confirmUnban = null;
+    view.restarting = Boolean(answer.restarting);
+    if (!answer.restarting) view.bans = answer.bans;
+    render();
+  },
+  "unban-ask"(el) {
+    view.confirmUnban = el.dataset.ip;
+    render();
+  },
+  "unban-cancel"() {
+    view.confirmUnban = null;
     render();
   },
   "mfa-off-no"() {

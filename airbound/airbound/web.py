@@ -10,7 +10,7 @@ from pathlib import Path
 import segno
 from aiohttp import ClientSession, web
 
-from . import checks, ha_settings, hosted, network, portmap, relay, steps, users
+from . import checks, ha_bans, ha_settings, hosted, network, portmap, relay, steps, users
 from .caddy import Caddy
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
@@ -412,14 +412,29 @@ class Panel:
         )
 
     async def bans(self, _request: web.Request) -> web.Response:
-        return web.json_response({"bans": await self._crowdsec.bans(), "running": self._crowdsec.running})
+        """CrowdSec's time-limited blocks and Home Assistant's own permanent ones."""
+        blocks = [{**b, "source": "crowdsec"} for b in await self._crowdsec.bans()]
+        blocks += [
+            {"ip": b["ip"], "reason": "Home Assistant: repeated failed logins", "expires_in": "", "banned_at": b["banned_at"], "source": "homeassistant"}
+            for b in ha_bans.read_bans()
+        ]
+        return web.json_response({"bans": blocks, "running": self._crowdsec.running})
 
     async def unban(self, request: web.Request) -> web.Response:
-        ip = ((await request.json()).get("ip") or "").strip()
+        body = await request.json()
+        ip = (body.get("ip") or "").strip()
         try:
             ipaddress.ip_address(ip)
         except ValueError:
             return web.json_response({"error": "That isn't an IP address."}, status=400)
+        if body.get("source") == "homeassistant":
+            # HA only reads ip_bans.yaml when it starts.
+            if ha_bans.remove_ban(ip):
+                try:
+                    await self._supervisor.ws({"type": "call_service", "domain": "homeassistant", "service": "restart"})
+                except Exception:  # the connection closes as Home Assistant goes down
+                    pass
+            return web.json_response({"bans": [], "restarting": True})
         await self._crowdsec.unban(ip)
         return await self.bans(request)
 

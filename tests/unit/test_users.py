@@ -91,3 +91,21 @@ async def test_enforce_mfa_limits_releases_and_remembers(tmp_path, monkeypatch):
     calls.clear()
     assert await users.enforce_mfa(None, store) == ([], ["Sam"])
     assert calls == [("sam", False)] and store.settings.auto_limited == ()
+
+
+def test_ha_bans_read_and_remove_one(tmp_path):
+    from airbound.ha_bans import read_bans, remove_ban
+
+    path = tmp_path / "ip_bans.yaml"
+    path.write_text(
+        "198.51.100.7:\n  banned_at: '2026-10-27T06:48:39.417339+00:00'\n"
+        "'2001:db8::1':\n  banned_at: '2026-10-27T07:00:00+00:00'\n"
+        "203.0.113.9:\n  banned_at: '2026-10-27T08:00:00+00:00'\n",
+        encoding="utf-8",
+    )
+    assert [b["ip"] for b in read_bans(path)] == ["198.51.100.7", "2001:db8::1", "203.0.113.9"]
+    assert read_bans(path)[0]["banned_at"].startswith("2026-10-27T06:48")
+    assert remove_ban("2001:db8::1", path) is True
+    assert [b["ip"] for b in read_bans(path)] == ["198.51.100.7", "203.0.113.9"]
+    assert remove_ban("192.0.2.1", path) is False
+    assert read_bans(tmp_path / "missing.yaml") == []
