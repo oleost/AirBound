@@ -1,12 +1,13 @@
 # Builds the add-on's images, so Home Assistant downloads a ready image instead of
-# compiling Caddy on each user's machine. Runs when the add-on changes on main.
+# compiling Caddy on each user's machine. Runs when the add-on changes on next
+# (test builds) or main (released, already-built versions).
 #
 # Images: ghcr.io/oleost/{amd64,aarch64}-addon-airbound:<version from config.yaml>
 name: Build add-on images
 
 on:
   push:
-    branches: [main]
+    branches: [next, main]  # next: test builds; main gets only tested commits
     paths: ["airbound/**", ".github/workflows/build.yaml"]
   workflow_dispatch:
 

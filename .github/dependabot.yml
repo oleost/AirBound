@@ -1,35 +1,35 @@
-# Weekly update proposals as pull requests against main (the test branch).
+# Weekly update proposals as pull requests against next (the test branch).
 # What Dependabot can't see (frp's commit, Caddy and its modules, CrowdSec,
 # Go, Home Assistant) is covered by .github/workflows/maintenance.yaml.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    target-branch: main
+    target-branch: next
     schedule: { interval: weekly, day: monday }
     groups:
       actions: { patterns: ["*"] }
 
   - package-ecosystem: docker
     directory: /airbound
-    target-branch: main
+    target-branch: next
     schedule: { interval: weekly, day: monday }
 
   - package-ecosystem: pip
     directory: /airbound
-    target-branch: main
+    target-branch: next
     schedule: { interval: weekly, day: monday }
     groups:
       addon-python: { patterns: ["*"] }
 
   - package-ecosystem: pip
     directory: /relay-server/controller
-    target-branch: main
+    target-branch: next
     schedule: { interval: weekly, day: monday }
 
   - package-ecosystem: pip
     directory: /
-    target-branch: main
+    target-branch: next
     schedule: { interval: weekly, day: monday }
     groups:
       dev-tools: { patterns: ["*"] }

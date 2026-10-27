@@ -30,7 +30,8 @@ def check_pushed() -> None:
     if status.strip():
         raise SystemExit("airbound/ has uncommitted changes. Commit and push them first.")
     subprocess.run(["git", "fetch", "-q"], cwd=ROOT, check=True)
-    ahead = subprocess.run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=ROOT, capture_output=True, text=True).stdout
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    ahead = subprocess.run(["git", "rev-list", "--count", f"origin/{branch}..HEAD"], cwd=ROOT, capture_output=True, text=True).stdout
     if ahead.strip() != "0":
         raise SystemExit("Local commits aren't on GitHub yet. Push them first.")
 

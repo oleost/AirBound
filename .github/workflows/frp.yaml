@@ -14,7 +14,7 @@ name: Build frp
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [next]
     paths: [".github/workflows/frp.yaml"]
 
 permissions:

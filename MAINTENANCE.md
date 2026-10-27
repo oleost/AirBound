@@ -22,7 +22,7 @@ from a commit to users and the live relay.
 
 | Time (UTC) | Workflow | What it does |
 | --- | --- | --- |
-| Mondays | Dependabot | Pull requests against `main` for Actions, Docker base images and Python packages |
+| Mondays | Dependabot | Pull requests against `next` for Actions, Docker base images and Python packages |
 | 05:17 | `scan.yaml` | Trivy scans both images; findings go to the Security tab |
 | 05:37 | `govulncheck.yaml` | Which Go vulnerabilities the bundled programs can actually reach |
 | 06:45 | `maintenance.yaml` | Pinned versions against the newest, the scans, Dependabot, and the relay's health (`/api/v1/ops`), as a comment on the "Weekly maintenance report" issue. GitHub emails it. |
@@ -34,7 +34,7 @@ needs a decision under **Action needed**.
 
 - **Weekly (automatic):** read the report email. Nothing under "Action needed": nothing to do.
 - **Monthly (about 30 minutes):** work through the open items:
-  - Merge Dependabot pull requests on `main` once its tests pass.
+  - Merge Dependabot pull requests on `next` once its tests pass.
   - Rebuild frp with the newest Go, and a newer frp if there is one (see below).
   - Update Caddy, its modules, CrowdSec and the Python base image when newer ones are out.
   - Update the test VM to the newest Home Assistant and run the test round.
@@ -45,20 +45,20 @@ needs a decision under **Action needed**.
 ## From change to users
 
 ```text
-commit on main ──▶ CI: unit + browser tests, images built, Trivy, govulncheck
+commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulncheck
       │
-      ▶ test VM (follows main) ──▶ python scripts/e2e.py: hosted relay, MFA guard and
+      ▶ test VM (follows next) ──▶ python scripts/e2e.py: hosted relay, MFA guard and
       │                           bypass probes, MFA enforcement, own relay on a fresh test VPS
       │
       ▶ relay changes: python scripts/relay_staging.py ──▶ the relay installed on the test VPS
       │
-      ▶ python scripts/release.py ──▶ stable = this commit (users update), then
+      ▶ python scripts/release.py ──▶ main = this commit (users update), then
                                      python scripts/relay_deploy.py ──▶ airbound.dev, with automatic rollback
 ```
 
-- **Branches:** `main` is development and testing. The test VM follows it (`https://github.com/oleost/HA-AirBound#main`). `stable` is GitHub's default branch, so everyone who added the repository without a branch name gets it. A release moves `stable` to a tested commit on `main`. The images for that version already exist, so users never see an update whose image is still building.
+- **Branches:** `next` is development and testing. The test VM follows it (`https://github.com/oleost/HA-AirBound#next`). `main` is what users get: everyone who added the repository without a branch name follows it. Home Assistant keeps the branch it cloned, so `main` must stay the users' branch. A release fast-forwards `main` to a tested commit on `next`. The images for that version already exist, so users never see an update whose image is still building. Work happens on `next`, never directly on `main`.
 - **Test round** (`scripts/e2e.py`, about 20 minutes):
-  - Deploys `main` to the test VM.
+  - Deploys `next` to the test VM.
   - Checks the hosted relay end to end, and the MFA guard against 23 path spellings.
   - Runs MFA enforcement with a throwaway user.
   - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, goes back to the hosted relay, and stops the VPS.
@@ -76,7 +76,7 @@ commit on main ──▶ CI: unit + browser tests, images built, Trivy, govulnch
 
 **frp** (our own build):
 
-1. In `.github/workflows/frp.yaml`, set `FRP_VERSION`, `FRP_COMMIT` (the commit behind the upstream tag: `gh api repos/fatedier/frp/commits/v<version> --jq .sha`) and raise `BUILD`. Push to `main`, and the release `frp-v<version>-airbound<N>` is built.
+1. In `.github/workflows/frp.yaml`, set `FRP_VERSION`, `FRP_COMMIT` (the commit behind the upstream tag: `gh api repos/fatedier/frp/commits/v<version> --jq .sha`) and raise `BUILD`. Push to `next`, and the release `frp-v<version>-airbound<N>` is built.
 2. Take the two checksums from the release's `sha256sums.txt`, then update the release name and checksums in all four places:
    - `airbound/Dockerfile`
    - `airbound/airbound/relay_install.sh`
