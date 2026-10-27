@@ -65,7 +65,7 @@ def report(config: Config, db: Database, certificate_days: float | None = None, 
         "kernel": platform.release(),
         "uptime_days": uptime_days,
         "reboot_required": Path("/run/reboot-required").exists(),
-        "days_since_package_lists_updated": _age_days(APT_STAMPS / "update-success-stamp"),
+        "days_since_package_lists_updated": _age_days(APT_STAMPS / "update-stamp"),  # Debian 13 writes no update-success-stamp
         "days_since_unattended_upgrade": _age_days(APT_STAMPS / "upgrade-stamp"),
         "disk_used_percent": round(100 * disk.used / disk.total, 1) if disk.total else None,
         "problems": health_problems(),
