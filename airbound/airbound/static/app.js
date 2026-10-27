@@ -354,7 +354,7 @@ steps.connection = () => {
       "Through AirBound's hosted relay",
       "Easiest",
       [
-        'Nothing to set up: no domain, no server and no router changes. You get an address like <span class="mono">x7k2….airbound.dev</span>.',
+        'Nothing to set up: no domain, no server and no router changes. You get an easy address like <span class="mono">otter-comet-maple.airbound.dev</span>.',
         "Comes with supporting AirBound on Patreon. It starts with a 7-day free trial, and you can cancel any time.",
         'AirBound is a hobby project: the relay is best effort, with no guarantee of uptime. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Terms</a>',
         "The relay can't read anything. The traffic stays encrypted all the way to your home, and the certificate is made by your own Home Assistant.",

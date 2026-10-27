@@ -8,10 +8,10 @@ names, email addresses or anything about the traffic's content.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import secrets
 import sqlite3
-import string
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,11 +69,19 @@ def new_secret() -> str:
     return secrets.token_urlsafe(32)
 
 
+WORDS_FILE = Path(__file__).with_name("words.txt")  # the same list as the add-on's
+
+
+@functools.cache
+def address_words() -> tuple[str, ...]:
+    lines = WORDS_FILE.read_text(encoding="utf-8").splitlines()
+    return tuple(line.strip() for line in lines if line.strip() and not line.startswith("#"))
+
+
 def new_hostname() -> str:
-    """Twelve characters nobody can guess, starting with a letter."""
-    alphabet = string.ascii_lowercase + string.digits
+    """Three different random words, such as otter-comet-maple, like the add-on suggests."""
     while True:
-        name = secrets.choice(string.ascii_lowercase) + "".join(secrets.choice(alphabet) for _ in range(11))
+        name = "-".join(secrets.SystemRandom().sample(address_words(), 3))
         if name not in RESERVED:
             return name
 

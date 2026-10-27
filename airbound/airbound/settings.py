@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
 import secrets
-import string
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
@@ -36,10 +36,20 @@ def valid_hostname(name: str) -> bool:
     return bool(HOSTNAME_RE.match(name))
 
 
+WORDS_FILE = Path(__file__).with_name("words.txt")
+
+
+@functools.cache
+def address_words() -> tuple[str, ...]:
+    """The hand-picked words in words.txt (the relay server keeps an identical copy)."""
+    lines = WORDS_FILE.read_text(encoding="utf-8").splitlines()
+    return tuple(line.strip() for line in lines if line.strip() and not line.startswith("#"))
+
+
 def random_hostname() -> str:
-    """A hostname nobody can guess, like Home Assistant Link's random URLs."""
-    alphabet = string.ascii_lowercase + string.digits
-    return secrets.choice(string.ascii_lowercase) + "".join(secrets.choice(alphabet) for _ in range(11))
+    """Three different random words, such as otter-comet-maple: easy to say and type,
+    and with about 960 million combinations still impractical to guess."""
+    return "-".join(secrets.SystemRandom().sample(address_words(), 3))
 
 
 @dataclass(frozen=True)

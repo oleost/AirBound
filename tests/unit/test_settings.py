@@ -40,7 +40,8 @@ def test_store_ignores_unknown_keys(tmp_path):
 def test_random_hostname_is_dns_safe_and_unique():
     names = {random_hostname() for _ in range(50)}
     assert len(names) == 50
-    assert all(re.fullmatch(r"[a-z][a-z0-9]{11}", n) for n in names)
+    assert all(re.fullmatch(r"[a-z]{3,8}-[a-z]{3,8}-[a-z]{3,8}", n) for n in names)
+    assert all(len(set(n.split("-"))) == 3 for n in names)  # three different words
 
 
 def test_ha_changes_in_plain_words():
