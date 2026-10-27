@@ -8,11 +8,12 @@ plus the relay server behind the hosted service at airbound.dev
 ## Rules
 
 - **English everywhere** in the repository: code, comments, docs, commit messages, UI text.
-- **Branches:** work on `next` only. `main` is what users' Home Assistants follow and moves only through `scripts/release.py`, which the maintainer runs. Never push to `main` directly.
+- **Branches:** work on `next` only. `main` is what users' Home Assistants follow and moves only through `scripts/release.py`, which Claude runs when the maintainer asks for a release. Never push to `main` directly.
 - **Privacy:** this repository is public. Before every push, scan the staged diff for private addresses, hostnames, tokens and names. Private values belong in `.env` (gitignored, listed in `scripts/testenv.py`) or on the relay under `/etc/airbound-controller`, never in the repository. `test-results/` is gitignored because screenshots show real addresses.
 - **Commits** use the repository's GitHub noreply identity (set in the repo-local git config).
 - **Files:** LF line endings (enforced by `.gitattributes`; `relay_install.sh` breaks with CRLF). Read and write text with `encoding="utf-8"` explicitly, since the Windows default is cp1252.
 - **The add-on UI is the documentation.** The panel is a guided wizard: every step says what to do and why, locked steps say what they wait for. A feature that needs reading docs to set up isn't finished.
+- **Claude runs everything.** The maintainer works only through Claude Code and never runs scripts by hand. Run the tests, the test round, staging and the release yourself, and when a step is due (a test round before a release, the beta check), run it or say it is due; never leave it as a step for the maintainer.
 - **Test it yourself** with the scripts below instead of handing manual testing to the maintainer.
 - **Test VMs stay stopped** except while a script uses them; the scripts stop them on exit.
 
@@ -34,7 +35,7 @@ plus the relay server behind the hosted service at airbound.dev
 .venv/Scripts/python scripts/beta.py                 # Home Assistant's beta channel
 ```
 
-`scripts/release.py` (maintainer only) refuses to release a commit without fresh
+`scripts/release.py` (on the maintainer's request) refuses to release a commit without fresh
 scans and a passing test round for that exact commit; relay changes also need
 relay staging, and it then runs `scripts/relay_deploy.py`.
 Without flags it releases at once, with no prompt: run `--check` first.
