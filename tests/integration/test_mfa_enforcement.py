@@ -18,9 +18,14 @@ from ha import HA
 WAIT = 90  # AirBound checks every minute
 
 
-async def outside_works(session: aiohttp.ClientSession, url: str, tokens: dict) -> bool:
+async def outside_status(session: aiohttp.ClientSession, url: str, tokens: dict) -> int:
     async with session.get(f"{url}/api/", headers={"Authorization": f"Bearer {tokens['access_token']}"}) as resp:
-        return resp.status == 200
+        return resp.status
+
+
+async def local_only(user_id: str) -> bool:
+    async with HA() as ha:
+        return bool(next(u for u in await ha.call({"type": "config/auth/list"}) if u["id"] == user_id).get("local_only"))
 
 
 async def wait_for(predicate, seconds: int = WAIT) -> bool:
@@ -32,6 +37,8 @@ async def wait_for(predicate, seconds: int = WAIT) -> bool:
 
 
 async def test_people_without_mfa_are_limited_until_they_turn_it_on(panel):
+    """Watches the user's flag instead of polling from outside: every refused
+    request counts towards Home Assistant's permanent IP ban."""
     settings = (await panel.get("api/state"))["settings"]
     if not (settings["live"] and settings["mode"] == "hosted"):
         pytest.skip("needs the hosted relay live on the test VM")
@@ -45,19 +52,21 @@ async def test_people_without_mfa_are_limited_until_they_turn_it_on(panel):
             tokens = await flow.token((await flow.login(name, password))["result"])
 
             async def limited() -> bool:
-                return not await outside_works(outside, url, tokens)
+                return await local_only(user_id)
 
-            assert await wait_for(limited), "the token from home still works outside"
+            assert await wait_for(limited), "AirBound didn't limit the user"
             people = (await panel.get("api/users"))["users"]
             assert next(p for p in people if p["id"] == user_id)["auto_limited"]
+            assert await outside_status(outside, url, tokens) == 401  # the token from home is refused outside
 
             # Turning MFA on lets them out again; the same token works outside.
             await enable_totp(home, name, password)
 
             async def released() -> bool:
-                return await outside_works(outside, url, tokens)
+                return not await local_only(user_id)
 
             assert await wait_for(released), "still limited after turning on MFA"
+            assert await outside_status(outside, url, tokens) == 200
     finally:
         async with HA() as ha:
             await ha.call({"type": "config/auth/delete", "user_id": user_id})
