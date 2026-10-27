@@ -41,7 +41,7 @@
    <details>
    <summary>Or add it by hand</summary>
 
-   In Home Assistant, go to **Settings â†’ Add-ons â†’ Add-on store**, open the **â‹®** menu at the top right, choose **Repositories**, and add:
+   In Home Assistant, go to **Settings → Add-ons → Add-on store**, open the **⋮** menu at the top right, choose **Repositories**, and add:
 
    ```text
    https://github.com/oleost/HA-AirBound
@@ -64,7 +64,7 @@ The first step asks how your phone should reach Home Assistant. You can change i
 | Setup | Log in with Patreon, about 5 minutes | One command on a small VPS | Forward one port |
 | Router changes | None | None | One port forward (or automatic, with UPnP/NAT-PMP) |
 | Your own domain | Not needed: you get `something.airbound.dev` | A domain on Cloudflare (free account) | A domain on Cloudflare (free account) |
-| Cost | Support on Patreon, 7-day free trial | A VPS, about â‚¬4â€“5 a month | Free |
+| Cost | Support on Patreon, 7-day free trial | A VPS, about €4–5 a month | Free |
 | Home address hidden | Yes | Yes | No |
 
 <p align="center"><img src="docs/screenshots/connection.png" alt="Choosing how to connect: hosted relay, your own server or your router" width="80%"></p>
@@ -130,7 +130,7 @@ HA_WS=ws://<test-vm>/api/websocket
 HA_TOKEN=<long-lived access token>
 ```
 
-Then deploy with `python scripts/deploy.py` (it installs the pushed version from GitHub on the test system) and run `python -m pytest tests/integration`. `python scripts/readme_screenshots.py` retakes the screenshots above, with the test system's address, names and IP addresses replaced by examples.
+Every push to `main` that changes the add-on runs the unit tests and builds the images for amd64 and aarch64 on GitHub Actions (`ghcr.io/oleost/{arch}-addon-airbound`), so Home Assistant downloads a ready image instead of building one. Then deploy with `python scripts/deploy.py` (it waits for the images and installs the pushed version on the test system) and run `python -m pytest tests/integration`. `python scripts/readme_screenshots.py` retakes the screenshots above, with the test system's address, names and IP addresses replaced by examples.
 
 ## Status
 

@@ -11,7 +11,7 @@ from ha import HA
 async def test_state_never_reveals_the_token(panel, live):
     state = await panel.get("api/state")
     assert "cloudflare_token" not in state["settings"]
-    assert state["steps"][0]["id"] == "cloudflare"
+    assert state["steps"][0]["id"] == "connection"
     assert {"done", "locked", "reason", "summary", "title"} <= set(state["steps"][0])
     assert state["landing"]
 

@@ -28,7 +28,7 @@ the private key never leaves the home and the relay can't decrypt anything.
 You need a small Debian or Ubuntu server with a public IPv4 address, a domain on
 Cloudflare, and a Patreon creator page with a tier for the relay.
 
-1. **Cloudflare:** create an API token with *Zone â†’ DNS â†’ Edit* and *Zone â†’ Zone â†’ Read* for the domain only, and lock it to the server's IP under *Client IP address filtering*. Turn off *Universal SSL* for the domain (SSL/TLS â†’ Edge Certificates); nothing is proxied through Cloudflare, and its automatic certificate would cover every member's address.
+1. **Cloudflare:** create an API token with *Zone → DNS → Edit* and *Zone → Zone → Read* for the domain only, and lock it to the server's IP under *Client IP address filtering*. Turn off *Universal SSL* for the domain (SSL/TLS → Edge Certificates); nothing is proxied through Cloudflare, and its automatic certificate would cover every member's address.
 2. **Patreon:** in the [developer portal](https://www.patreon.com/portal/registration/register-clients), create a client (API version 2) with the redirect URI `https://<your domain>/patreon/callback`.
 3. **Secrets on the server**, readable by root only. They never go in this repository:
 
