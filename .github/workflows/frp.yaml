@@ -31,26 +31,40 @@ jobs:
     permissions:
       contents: write  # create the release
     steps:
+      - name: Already built?
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "frp-v${FRP_VERSION}-${BUILD}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::notice::frp-v${FRP_VERSION}-${BUILD} exists; raise BUILD in this file to build again."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.existing.outputs.skip != 'true'
         with:
           go-version: stable
           cache: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.existing.outputs.skip != 'true'
         with:
           repository: fatedier/frp
           ref: ${{ env.FRP_COMMIT }}
           path: src
           persist-credentials: false
       - name: Current golang.org/x libraries
+        if: steps.existing.outputs.skip != 'true'
         working-directory: src
         run: |
           go get golang.org/x/net@latest golang.org/x/crypto@latest golang.org/x/text@latest golang.org/x/sys@latest
           go mod tidy
           git --no-pager diff --stat go.mod
       - name: Test
+        if: steps.existing.outputs.skip != 'true'
         working-directory: src
         run: go test -tags noweb ./pkg/... ./server/... ./client/...
       - name: Build
+        if: steps.existing.outputs.skip != 'true'
         working-directory: src
         run: |
           set -eu
@@ -66,6 +80,7 @@ jobs:
           cd ../dist && sha256sum ./*.tar.gz | sed 's| \./| |' > sha256sums.txt && cat sha256sums.txt
           go version > ../dist/go-version.txt
       - name: govulncheck on the result
+        if: steps.existing.outputs.skip != 'true'
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           for prog in frps frpc; do
@@ -73,6 +88,7 @@ jobs:
             "$(go env GOPATH)/bin/govulncheck" -mode binary "dist/frp_${FRP_VERSION}_linux_amd64/$prog" | tee -a dist/govulncheck.txt || true
           done
       - name: Publish release
+        if: steps.existing.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

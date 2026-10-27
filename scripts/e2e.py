@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import secrets
 import sys
 import time
@@ -83,7 +84,7 @@ def unit() -> str:
 
 def deploy() -> str:
     run([sys.executable, "scripts/deploy.py"], timeout=2400)
-    return "test VM runs the version on main"
+    return "test VM runs the version on next"
 
 
 async def ensure_hosted(p: Panel) -> str:
@@ -178,7 +179,8 @@ async def own_relay() -> str:
                 url = await ensure_hosted(p)
         if status_code(url) != 200:
             raise RuntimeError(f"back on the hosted relay, but {url} answers {status_code(url)}")
-        return f"fresh VPS: installed and hardened ({score.split(':')[-1].strip()}), tunnel up, back on {url}"
+        exposure = re.search(r"(\d+\.\d+)\s+\w+", score)  # the line ends in a smiley with a colon
+        return f"fresh VPS: installed and hardened (exposure {exposure.group(1) if exposure else '?'}), tunnel up, back on {url}"
 
 
 SCENARIOS = [("unit", unit), ("deploy", deploy), ("hosted", hosted), ("integration", integration), ("bypass", bypass), ("own_relay", own_relay)]
