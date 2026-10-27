@@ -3,9 +3,9 @@ FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.14.1 \
-    --with github.com/crowdsecurity/crowdsec@v1.7.8 \
-    --with golang.org/x/net@v0.60.0 \
-    --with github.com/go-chi/chi/v5@v5.4.0 \
+    --replace github.com/crowdsecurity/crowdsec=github.com/crowdsecurity/crowdsec@v1.7.8 \
+    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
+    --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@v5.4.0 \
     --output /usr/bin/caddy
 
 FROM crowdsecurity/crowdsec:v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880670c62f2755ced17524107f71a AS crowdsec
