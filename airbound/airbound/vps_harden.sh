@@ -19,6 +19,14 @@ harden_server() {
 }
 
 harden_firewall() {
+  if { command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; } || systemctl is-active --quiet firewalld 2>/dev/null; then
+    # Another firewall took over since a previous run: two would fight over ports.
+    if [ -f /etc/airbound-firewall.nft ]; then
+      systemctl disable --now airbound-firewall >/dev/null 2>&1 || true
+      rm -f /etc/airbound-firewall.nft /etc/systemd/system/airbound-firewall.service
+      echo "Firewall: removed AirBound's own firewall, since another one now manages this server."
+    fi
+  fi
   if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
     for P in $1; do ufw allow "$P/tcp" >/dev/null; done
     echo "Firewall: ufw manages this server; opened TCP $1 there."
