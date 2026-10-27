@@ -13,7 +13,7 @@
 # Secrets live in /etc/airbound-controller and never in this repository.
 set -eu
 
-FRP_VERSION="0.71.0"
+FRP_VERSION="0.71.1"
 CADDY_VERSION="2.11.7"
 HERE=$(cd "$(dirname "$0")" && pwd)
 
@@ -27,12 +27,12 @@ HARDEN="$HERE/../airbound/airbound/vps_harden.sh"  # shared with the personal re
 case "$(uname -m)" in
   x86_64 | amd64)
     ARCH=amd64
-    FRP_SHA=84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716
+    FRP_SHA=1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803
     CADDY_SHA=a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
     ;;
   aarch64 | arm64)
     ARCH=arm64
-    FRP_SHA=f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266
+    FRP_SHA=8edf590b0c396fa42f9c147121a76af83cfc2002b08f5aef0ea1008c43482019
     CADDY_SHA=3db36ba90c7a6e8dda40ee3dd71fa08844c76b5fb08f61b31e5e78d2ed38e71c51dc7baed875e50d1ca1279196e84302967237386ae87c91ae9f2aaceada682e
     ;;
   *) fail "unsupported processor: $(uname -m)" ;;

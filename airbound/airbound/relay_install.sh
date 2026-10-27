@@ -6,7 +6,7 @@ set -eu
 TOKEN="__TOKEN__"
 CONTROL_PORT="__CONTROL_PORT__"
 PUBLIC_PORT="__PUBLIC_PORT__"
-VERSION="0.71.0"
+VERSION="0.71.1"
 
 fail() { echo "AirBound relay: $1" >&2; exit 1; }
 
@@ -15,8 +15,8 @@ command -v systemctl >/dev/null 2>&1 || fail "this server needs systemd (Debian 
 command -v curl >/dev/null 2>&1 || fail "curl is missing. Install it with: apt install -y curl"
 
 case "$(uname -m)" in
-  x86_64 | amd64) ARCH=amd64; SHA=84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716 ;;
-  aarch64 | arm64) ARCH=arm64; SHA=f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266 ;;
+  x86_64 | amd64) ARCH=amd64; SHA=1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803 ;;
+  aarch64 | arm64) ARCH=arm64; SHA=8edf590b0c396fa42f9c147121a76af83cfc2002b08f5aef0ea1008c43482019 ;;
   *) fail "unsupported processor: $(uname -m)" ;;
 esac
 
