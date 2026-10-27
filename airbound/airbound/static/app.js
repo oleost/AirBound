@@ -457,8 +457,11 @@ steps.hosted = () => {
         <h2>3. Log in with Patreon</h2>
         ${
           h.state === "needs_membership"
-            ? `<div class="notice warn"><p><b>You're logged in, but the membership is missing.</b> Start the 7-day free trial on Patreon, then select <b>I've joined: check again</b> on the link page.</p>
-               <div class="actions"><a class="button" href="${esc(h.join_url)}" target="_blank" rel="noopener">Start the free trial on Patreon</a></div></div>`
+            ? (h.join_url || "").includes("github.com")
+              ? `<div class="notice warn"><p><b>You're logged in, but the GitHub sponsorship is missing.</b> Choose a monthly tier on GitHub Sponsors, then select <b>I've sponsored: check again</b> on the link page.</p>
+                 <div class="actions"><a class="button" href="${esc(h.join_url)}" target="_blank" rel="noopener">Sponsor on GitHub</a></div></div>`
+              : `<div class="notice warn"><p><b>You're logged in, but the membership is missing.</b> Start the 7-day free trial on Patreon, then select <b>I've joined: check again</b> on the link page.</p>
+                 <div class="actions"><a class="button" href="${esc(h.join_url)}" target="_blank" rel="noopener">Start the free trial on Patreon</a></div></div>`
             : "<p>Log in on the link page. AirBound continues here by itself.</p>"
         }
         <p class="muted small"><span class="spinner"></span> Waiting for the login…</p>

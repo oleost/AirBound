@@ -2,7 +2,7 @@
 
 Linking works like signing in a TV: Home Assistant asks for a link request and
 shows a short code, the person opens the link page, checks the code, logs in
-with Patreon, and Home Assistant picks up its key. The code check stops someone
+with Patreon or GitHub, and Home Assistant picks up its key. The code check stops someone
 from sending a stranger a link that would tie the stranger's membership to the
 sender's Home Assistant.
 """
@@ -24,6 +24,8 @@ from aiohttp import web
 from . import access, pages
 from .config import Config
 from .db import Database
+from . import github as gh
+from .github import GitHub, GitHubError
 from .patreon import Patreon, PatreonError, authorize_url, valid_signature
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,10 +64,11 @@ class RateLimit:
 
 
 class Web:
-    def __init__(self, config: Config, db: Database, patreon: Patreon, sync_soon) -> None:
+    def __init__(self, config: Config, db: Database, patreon: Patreon, sync_soon, github: GitHub | None = None) -> None:
         self._config = config
         self._db = db
         self._patreon = patreon
+        self._github = github
         self._sync_soon = sync_soon
         self._states: dict[str, tuple[str, float]] = {}
         self._claims_limit = RateLimit(10, 3600)
@@ -84,6 +87,9 @@ class Web:
         app.router.add_get("/link/{claim}/login", self.link_login)
         app.router.add_get("/patreon/callback", self.callback)
         app.router.add_post("/patreon/webhook", self.webhook)
+        app.router.add_get("/link/{claim}/github", self.link_github)
+        app.router.add_get("/github/callback", self.github_callback)
+        app.router.add_post("/github/webhook", self.github_webhook)
         return app
 
     @staticmethod
@@ -137,7 +143,7 @@ class Web:
         if claim is None:
             return web.json_response({"state": "expired"}, status=404)
         if claim["state"] == "needs_membership":
-            return web.json_response({"state": "needs_membership", "join_url": self._config.join_url})
+            return web.json_response({"state": "needs_membership", "join_url": self._config.join_url_for(claim["patreon_id"] or "")})
         if claim["state"] == "approved" and claim["device_key"]:
             device = self._db.device(claim["device_id"])
             self._db.take_claim_key(claim["id"])
@@ -167,8 +173,8 @@ class Web:
                 "state": state,
                 "fqdn": f"{device.hostname}.{self._config.domain}",
                 "grace_until": access.grace_until(account, self._config.grace_days),
-                "join_url": self._config.join_url,
-                "manage_url": self._config.manage_url,
+                "join_url": self._config.join_url_for(device.patreon_id),
+                "manage_url": self._config.manage_url_for(device.patreon_id),
             }
         )
 
@@ -178,23 +184,50 @@ class Web:
         claim = self._db.claim(request.match_info["claim"])
         if claim is None or claim["state"] in ("approved", "delivered"):
             return self._page("Link expired", pages.expired(), status=404)
-        return self._page("Link your Home Assistant", pages.confirm_code(claim["id"], claim_code(claim["id"])))
+        github = bool(self._github and self._github.enabled)
+        return self._page("Link your Home Assistant", pages.confirm_code(claim["id"], claim_code(claim["id"]), github=github))
+
+    def _new_state(self, claim_id: str) -> str:
+        now = time.time()
+        self._states = {s: v for s, v in self._states.items() if v[1] > now}
+        state = secrets.token_urlsafe(24)
+        self._states[state] = (claim_id, now + OAUTH_STATE_TTL)
+        return state
+
+    def _claim_for_state(self, request: web.Request):
+        claim_id, expires = self._states.pop(request.query.get("state", ""), ("", 0))
+        claim = self._db.claim(claim_id) if expires > time.time() else None
+        return claim if claim is not None and "code" in request.query else None
 
     async def link_login(self, request: web.Request) -> web.Response:
         claim = self._db.claim(request.match_info["claim"])
         if claim is None:
             return self._page("Link expired", pages.expired(), status=404)
-        now = time.time()
-        self._states = {s: v for s, v in self._states.items() if v[1] > now}
-        state = secrets.token_urlsafe(24)
-        self._states[state] = (claim["id"], now + OAUTH_STATE_TTL)
-        raise web.HTTPFound(authorize_url(self._config, state))
+        raise web.HTTPFound(authorize_url(self._config, self._new_state(claim["id"])))
+
+    async def link_github(self, request: web.Request) -> web.Response:
+        claim = self._db.claim(request.match_info["claim"])
+        if claim is None or not (self._github and self._github.enabled):
+            return self._page("Link expired", pages.expired(), status=404)
+        raise web.HTTPFound(gh.authorize_url(self._config, self._new_state(claim["id"])))
+
+    def _finish_link(self, claim, account: str, entitled: bool) -> web.Response:
+        """After either login: link the Home Assistant, or ask for the support that gives access."""
+        self._db.set_entitled(account, entitled)
+        state_now = access.state(self._db.account(account), account, self._config.free_users, self._config.grace_days)
+        if state_now == access.EXPIRED:
+            self._db.set_claim(claim["id"], "needs_membership", patreon_id=account)
+            if gh.is_github(account):
+                return self._page("Sponsor AirBound", pages.needs_sponsorship(self._config, claim["id"]))
+            return self._page("Start your membership", pages.needs_membership(self._config, claim["id"]))
+        device, key = self._db.link_device(account, claim["install_id"], self._config.max_devices)
+        self._db.set_claim(claim["id"], "approved", patreon_id=account, device_id=device.id, device_key=key)
+        _LOGGER.info("Linked device %s", device.id)
+        return self._page("Linked", pages.linked(f"{device.hostname}.{self._config.domain}"))
 
     async def callback(self, request: web.Request) -> web.Response:
-        state = request.query.get("state", "")
-        claim_id, expires = self._states.pop(state, ("", 0))
-        claim = self._db.claim(claim_id) if expires > time.time() else None
-        if claim is None or "code" not in request.query:
+        claim = self._claim_for_state(request)
+        if claim is None:
             return self._page("Link expired", pages.expired(), status=400)
         try:
             token = await self._patreon.exchange_code(request.query["code"])
@@ -202,15 +235,28 @@ class Web:
         except PatreonError as err:
             _LOGGER.warning("Patreon login failed: %s", err)
             return self._page("Something went wrong", pages.error("Patreon didn't confirm the login. Please try again."), status=502)
-        self._db.set_entitled(patreon_id, entitled)
-        state_now = access.state(self._db.account(patreon_id), patreon_id, self._config.free_users, self._config.grace_days)
-        if state_now == access.EXPIRED:
-            self._db.set_claim(claim_id, "needs_membership", patreon_id=patreon_id)
-            return self._page("Start your membership", pages.needs_membership(self._config, claim_id))
-        device, key = self._db.link_device(patreon_id, claim["install_id"], self._config.max_devices)
-        self._db.set_claim(claim_id, "approved", patreon_id=patreon_id, device_id=device.id, device_key=key)
-        _LOGGER.info("Linked device %s", device.id)
-        return self._page("Linked", pages.linked(f"{device.hostname}.{self._config.domain}"))
+        return self._finish_link(claim, patreon_id, entitled)
+
+    async def github_callback(self, request: web.Request) -> web.Response:
+        claim = self._claim_for_state(request)
+        if claim is None or not (self._github and self._github.enabled):
+            return self._page("Link expired", pages.expired(), status=400)
+        try:
+            token = await self._github.exchange_code(request.query["code"])
+            account, entitled = await self._github.check_person(token)
+        except GitHubError as err:
+            _LOGGER.warning("GitHub login failed: %s", err)
+            return self._page("Something went wrong", pages.error("GitHub didn't confirm the login. Please try again."), status=502)
+        return self._finish_link(claim, account, entitled)
+
+    async def github_webhook(self, request: web.Request) -> web.Response:
+        body = await request.read()
+        secret = self._config.github_webhook_secret
+        if not secret or not gh.valid_signature(secret, body, request.headers.get("X-Hub-Signature-256", "")):
+            return web.json_response({"error": "bad signature"}, status=403)
+        _LOGGER.info("GitHub webhook: %s", html.escape(request.headers.get("X-GitHub-Event", "")))
+        self._sync_soon()
+        return web.json_response({"ok": True})
 
     async def webhook(self, request: web.Request) -> web.Response:
         body = await request.read()

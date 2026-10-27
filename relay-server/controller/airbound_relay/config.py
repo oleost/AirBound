@@ -51,6 +51,12 @@ class Config:
     plugin_port: int = 7600  # frps server plugin, localhost only
     hub_admin_port: int = 7400  # frps admin API, localhost only, for traffic counters
     hub_admin_password: str = ""
+    github_client_id: str = ""  # GitHub OAuth app, for "Log in with GitHub"
+    github_client_secret: str = ""
+    github_token: str = ""  # the maintainer's token (read:user), to read the sponsor list
+    github_webhook_secret: str = ""
+    github_sponsorable: str = ""  # the GitHub account people sponsor, e.g. oleost
+    github_min_cents: int = 100  # monthly sponsorship that gives access (GitHub tiers are whole dollars)
 
     @property
     def base_url(self) -> str:
@@ -69,9 +75,28 @@ class Config:
     def manage_url(self) -> str:
         return f"https://www.patreon.com/c/{self.patreon_vanity}/membership"
 
+    @property
+    def github_redirect_uri(self) -> str:
+        return f"{self.base_url}/github/callback"
+
+    @property
+    def github_sponsor_url(self) -> str:
+        return f"https://github.com/sponsors/{self.github_sponsorable}"
+
+    def join_url_for(self, account: str) -> str:
+        """Where this account starts or renews the support that gives access."""
+        return self.github_sponsor_url if account.startswith("gh:") else self.join_url
+
+    def manage_url_for(self, account: str) -> str:
+        return self.github_sponsor_url if account.startswith("gh:") else self.manage_url
+
 
 def load(config_dir: Path = CONFIG_DIR) -> Config:
-    env = {**read_env_file(config_dir / "controller.env"), **read_env_file(config_dir / "patreon.env")}
+    env = {
+        **read_env_file(config_dir / "controller.env"),
+        **read_env_file(config_dir / "patreon.env"),
+        **read_env_file(config_dir / "github.env"),
+    }
     token_file = config_dir / "cloudflare_token"
     free = {u.strip() for u in env.get("FREE_PATREON_USERS", "").split(",") if u.strip()}
     return Config(
@@ -98,4 +123,10 @@ def load(config_dir: Path = CONFIG_DIR) -> Config:
         emergency_bandwidth=env.get("EMERGENCY_BANDWIDTH", "512KB"),
         alert_url=env.get("ALERT_URL", ""),
         hub_admin_password=env.get("HUB_ADMIN_PASSWORD", ""),
+        github_client_id=env.get("GITHUB_CLIENT_ID", ""),
+        github_client_secret=env.get("GITHUB_CLIENT_SECRET", ""),
+        github_token=env.get("GITHUB_TOKEN", ""),
+        github_webhook_secret=env.get("GITHUB_WEBHOOK_SECRET", ""),
+        github_sponsorable=env.get("GITHUB_SPONSORABLE", ""),
+        github_min_cents=int(env.get("GITHUB_MIN_CENTS", "100")),
     )

@@ -44,6 +44,16 @@ Cloudflare, and a Patreon creator page with a tier for the relay.
    chmod 600 /etc/airbound-controller/*
    ```
 
+   Optional, for GitHub Sponsors as a second way in: a GitHub OAuth app (callback `https://<your domain>/github/callback`), a classic token with `read:user` from the sponsored account (to read the sponsor list), and a sponsorship webhook to `https://<your domain>/github/webhook` with a secret, in `/etc/airbound-controller/github.env`:
+
+   ```sh
+   GITHUB_CLIENT_ID=...
+   GITHUB_CLIENT_SECRET=...
+   GITHUB_TOKEN=...
+   GITHUB_WEBHOOK_SECRET=...
+   GITHUB_SPONSORABLE=<account>
+   ```
+
 4. **Run the installer** from this directory: `sudo sh install.sh`. The first run creates `/etc/airbound-controller/controller.env`; fill in `DOMAIN`, `CAMPAIGN_ID` and `RELAY_TIER_ID` (shown by the Patreon API), then run it again.
 5. **Point the domain at the server:** `cd /opt/airbound-controller && sudo -u airbound-controller venv/bin/python -m airbound_relay dns`.
 
@@ -69,6 +79,8 @@ to your domain.
 | `THROTTLED_BANDWIDTH` | `1MB` | Speed past that allowance, for the rest of the month |
 | `SERVER_MONTHLY_GB` | `15000` | What the server may send in a month (stay under your provider's included traffic) |
 | `EMERGENCY_BANDWIDTH` | `512KB` | Speed for everyone past the server's allowance |
+| `GITHUB_SPONSORABLE` | | Optional: the GitHub account people sponsor; turns on "Continue with GitHub Sponsors" |
+| `GITHUB_MIN_CENTS` | `100` | Monthly sponsorship that gives access ($1; GitHub tiers are whole dollars) |
 | `ALERT_URL` | | Optional [ntfy](https://ntfy.sh)-style URL; alerts always go to the journal too |
 
 ## Keeping one member from taking the whole server

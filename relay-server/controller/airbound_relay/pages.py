@@ -43,7 +43,7 @@ def page(title: str, body: str, config: Config) -> str:
 def home(config: Config) -> str:
     return f"""<div class="card"><h1>Secure remote access for Home Assistant</h1>
 <p>AirBound gives your Home Assistant its own secure web address that works in the Companion app and any browser, without a VPN and without opening ports on your router.</p>
-<p>AirBound is a free, open-source hobby project, made by one person in their spare time. Supporters on Patreon help pay for its development and get access to this hosted relay as a thank-you. Install the AirBound add-on in Home Assistant, choose <b>AirBound hosted relay</b>, and it walks you through the rest. New supporters get a 7-day free trial.</p>
+<p>AirBound is a free, open-source hobby project, made by one person in their spare time. Supporters on Patreon or GitHub Sponsors help pay for its development and get access to this hosted relay as a thank-you. Install the AirBound add-on in Home Assistant, choose <b>AirBound hosted relay</b>, and it walks you through the rest. New supporters get a 7-day free trial.</p>
 <a class="button" href="https://github.com/oleost/HA-AirBound">Get the add-on</a>
 <a class="button secondary" href="{escape(config.join_url)}">Support on Patreon</a></div>
 <div class="card"><h2>Please read before you join</h2>
@@ -58,7 +58,7 @@ def home(config: Config) -> str:
 def privacy(config: Config) -> str:
     return f"""<div class="card"><h1>Privacy</h1>
 <p>The hosted relay keeps as little as possible:</p><ul>
-<li><b>Your Patreon user id</b> and whether your membership includes the relay. Not your name or email address.</li>
+<li><b>Your Patreon or GitHub user id</b> and whether your membership or sponsorship includes the relay. Not your name or email address.</li>
 <li><b>For each linked Home Assistant:</b> its random address on {escape(config.domain)}, a hash of its key, when it was last connected, and how much data it used each month (for the fair-use limit, kept for three months).</li>
 <li><b>Connection logs</b> (address and time) are kept for at most 14 days to stop abuse.</li>
 </ul>
@@ -74,8 +74,8 @@ def terms(config: Config) -> str:
 <p class="muted">Last updated {TERMS_UPDATED}. In short: AirBound is a hobby project. Patreon support pays for its development, the relay is a thank-you that comes with no guarantee, and you can always move to your own server or router.</p>
 <h2>A hobby project</h2>
 <p>AirBound is free, open-source software (MIT license), made by one person in their spare time. It is not a company, and it is not affiliated with Home Assistant or Nabu Casa.</p>
-<h2>What Patreon support is for</h2>
-<p>A membership on Patreon supports the development of AirBound. As a thank-you, members of the <b>Relay</b> tier may use the hosted relay on {escape(config.domain)}. You're supporting a project, not buying a service: there is no service level, no promised uptime and no support agreement.</p>
+<h2>What Patreon and GitHub support is for</h2>
+<p>A membership on Patreon or a monthly sponsorship on GitHub supports the development of AirBound. As a thank-you, members of the <b>Relay</b> tier on Patreon and monthly GitHub sponsors may use the hosted relay on {escape(config.domain)}. You're supporting a project, not buying a service: there is no service level, no promised uptime and no support agreement.</p>
 <h2>No guarantee</h2>
 <ul>
 <li>The relay and the add-on are provided <b>as is</b>, without warranty of any kind.</li>
@@ -91,19 +91,22 @@ def terms(config: Config) -> str:
 <li>Each membership covers up to {config.max_devices} Home Assistant installations. Fair use: each runs at up to {escape(config.bandwidth)}/s, and past {config.device_monthly_gb} GB in a calendar month at {escape(config.throttled_bandwidth)}/s for the rest of that month. If the whole server nears its own monthly limit, everyone may be slowed down until the month ends.</li>
 </ul>
 <h2>Payments, cancelling and refunds</h2>
-<p>Patreon handles all payments, cancelling and refunds under <a href="https://www.patreon.com/policy/legal" target="_blank" rel="noopener">its own terms</a>; AirBound never sees your card. You can cancel any time on Patreon. Access ends when Patreon reports that the membership has ended, after a grace period of {config.grace_days} days. Because the membership supports development rather than buying uptime, outages don't give a refund.</p>
+<p>Patreon and GitHub handle all payments, cancelling and refunds under their own terms (<a href="https://www.patreon.com/policy/legal" target="_blank" rel="noopener">Patreon</a>, <a href="https://docs.github.com/en/site-policy/github-terms/github-sponsors-additional-terms" target="_blank" rel="noopener">GitHub Sponsors</a>); AirBound never sees your card. You can cancel any time where you signed up. Access ends when Patreon or GitHub reports that the support has ended, after a grace period of {config.grace_days} days. Because the membership supports development rather than buying uptime, outages don't give a refund.</p>
 <h2>If the relay closes</h2>
 <p>If the hosted relay is ever shut down for good, the plan is to say so on Patreon and GitHub at least 30 days ahead when possible. The add-on keeps working with your own server or router.</p>
 <h2>Changes and contact</h2>
 <p>These terms can change; the date above shows the latest version, and bigger changes are posted on Patreon. Questions go to <a href="https://github.com/oleost/HA-AirBound/issues">GitHub issues</a>. See also the <a href="/privacy">privacy page</a>.</p></div>"""
 
 
-def confirm_code(claim_id: str, code: str) -> str:
+def confirm_code(claim_id: str, code: str, github: bool = False) -> str:
+    github_button = f'<a class="button" href="/link/{escape(claim_id)}/github">Continue with GitHub Sponsors</a>' if github else ""
     return f"""<div class="card"><h1>Link your Home Assistant</h1>
 <p>Check that AirBound in your Home Assistant shows this code:</p>
 <div class="code">{escape(code)}</div>
 <p class="muted">If you didn't start this yourself, or the code is different, close this page. Someone may be trying to use your membership.</p>
-<a class="button" href="/link/{escape(claim_id)}/login">The code matches: continue with Patreon</a>
+<p>The code matches? Log in where you support AirBound:</p>
+<a class="button" href="/link/{escape(claim_id)}/login">Continue with Patreon</a>
+{github_button}
 <p class="muted">By continuing you accept the <a href="/terms">terms</a>: AirBound is a hobby project, and the relay comes with no guarantee.</p></div>"""
 
 
@@ -114,6 +117,16 @@ def needs_membership(config: Config, claim_id: str) -> str:
 <a class="button" href="{escape(config.join_url)}" target="_blank" rel="noopener">Start the free trial on Patreon</a>
 <a class="button secondary" href="/link/{escape(claim_id)}/login">I've joined: check again</a>
 <p class="muted">Joining on Patreon's iPhone app doesn't offer the trial. Use the browser.</p></div>"""
+
+
+def needs_sponsorship(config: Config, claim_id: str) -> str:
+    dollars = config.github_min_cents / 100
+    amount = f"${dollars:g}"
+    return f"""<div class="card"><h1>One more step: sponsor AirBound on GitHub</h1>
+<p>You're logged in, but your GitHub account doesn't sponsor <b>{escape(config.github_sponsorable)}</b> yet. A monthly sponsorship of {escape(amount)} or more supports AirBound's development, and access to the relay comes with it as a thank-you. You can cancel any time.</p>
+<a class="button" href="{escape(config.github_sponsor_url)}" target="_blank" rel="noopener">Sponsor on GitHub</a>
+<a class="button secondary" href="/link/{escape(claim_id)}/github">I've sponsored: check again</a>
+<p class="muted">Choose a monthly tier; a one-time sponsorship doesn't give access. The relay is a best-effort hobby service with no guarantee of uptime. See the <a href="/terms">terms</a>.</p></div>"""
 
 
 def linked(fqdn: str) -> str:

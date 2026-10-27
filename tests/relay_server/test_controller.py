@@ -237,3 +237,51 @@ def test_fair_use_keeps_three_months():
     now = 1_790_000_000.0  # 2026-09
     assert month_of(now) == "2026-09"
     assert months_ago(now, 2) == "2026-07"
+
+
+def test_github_monthly_sponsorship_at_the_minimum_gives_access():
+    from airbound_relay.github import sponsorship_counts
+
+    monthly = lambda cents: {"isOneTimePayment": False, "tier": {"monthlyPriceInCents": cents, "isOneTime": False}}
+    assert sponsorship_counts(monthly(100), 100)
+    assert sponsorship_counts(monthly(500), 100)
+    assert not sponsorship_counts(monthly(50), 100)
+    assert not sponsorship_counts({"isOneTimePayment": True, "tier": {"monthlyPriceInCents": 1000, "isOneTime": True}}, 100)
+    assert not sponsorship_counts(None, 100)
+
+
+def test_github_webhook_signature():
+    import hashlib, hmac
+    from airbound_relay.github import valid_signature
+
+    body = b'{"action":"created"}'
+    good = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+    assert valid_signature("s3cret", body, good)
+    assert not valid_signature("s3cret", body, "sha256=" + "0" * 64)
+    assert not valid_signature("s3cret", body, "")
+
+
+async def test_github_sync_sets_access_for_github_accounts_only(tmp_path, monkeypatch):
+    from airbound_relay.github import GitHub
+
+    db = Database(tmp_path / "db.sqlite")
+    db.set_entitled("u1", True)  # a Patreon member: untouched by the GitHub sync
+    db.set_entitled("gh:7", True)  # was sponsoring, stopped
+    config = Config(domain="airbound.dev", github_client_id="c", github_client_secret="s", github_token="t", github_sponsorable="oleost")
+    github = GitHub(config, db, None)
+
+    async def fake_graphql(_token, _query, _variables):
+        node = lambda uid, cents: {"isOneTimePayment": False, "tier": {"monthlyPriceInCents": cents, "isOneTime": False}, "sponsorEntity": {"databaseId": uid}}
+        return {"user": {"sponsorshipsAsMaintainer": {"pageInfo": {"hasNextPage": False}, "nodes": [node(42, 100), node(43, 50)]}}}
+
+    monkeypatch.setattr(github, "_graphql", fake_graphql)
+    assert await github.sync_sponsors() == 1
+    assert db.account("gh:42").entitled and not db.account("gh:43").entitled
+    assert not db.account("gh:7").entitled and db.account("gh:7").lapsed_at  # grace period starts
+    assert db.account("u1").entitled
+
+
+def test_join_and_manage_links_follow_the_account():
+    config = Config(domain="airbound.dev", tier_id=TIER, github_sponsorable="oleost")
+    assert config.join_url_for("gh:42") == "https://github.com/sponsors/oleost"
+    assert "patreon.com" in config.join_url_for("12345")

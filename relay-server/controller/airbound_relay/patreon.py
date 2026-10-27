@@ -165,7 +165,8 @@ class Patreon:
             pages.append(page)
             url = ((page.get("links") or {}).get("next")) or ""
         entitled = members_entitled(pages, self._config.tier_id)
-        for patreon_id in set(self._db.account_ids()) | set(entitled):
+        patreon_accounts = {a for a in self._db.account_ids() if not a.startswith("gh:")}  # GitHub has its own sync
+        for patreon_id in patreon_accounts | set(entitled):
             self._db.set_entitled(patreon_id, entitled.get(patreon_id, False))
         return sum(entitled.values())
 

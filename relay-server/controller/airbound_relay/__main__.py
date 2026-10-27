@@ -17,6 +17,7 @@ from . import config as config_module
 from .cloudflare import ensure_records
 from .db import Database
 from .frp import Plugin
+from .github import GitHub, GitHubError
 from .limits import Limits, alert, default_interface, health_problems, hub_traffic, sent_bytes
 from .patreon import Patreon, PatreonError
 from .web import Debouncer, Web
@@ -37,15 +38,26 @@ async def plugin_app(plugin: Plugin) -> web.Application:
     return app
 
 
-async def keep_in_sync(patreon: Patreon) -> None:
+async def sync_all(patreon: Patreon, github: GitHub) -> None:
+    """Both member lists; one failing doesn't stop the other."""
+    try:
+        _LOGGER.info("Patreon sync: %d with relay access", await patreon.sync_members())
+    except PatreonError as err:
+        _LOGGER.warning("Patreon sync failed: %s", err)
+    except Exception:
+        _LOGGER.exception("Patreon sync failed")
+    try:
+        if github.enabled:
+            _LOGGER.info("GitHub sync: %d sponsors with relay access", await github.sync_sponsors())
+    except GitHubError as err:
+        _LOGGER.warning("GitHub sync failed: %s", err)
+    except Exception:
+        _LOGGER.exception("GitHub sync failed")
+
+
+async def keep_in_sync(patreon: Patreon, github: GitHub) -> None:
     while True:
-        try:
-            count = await patreon.sync_members()
-            _LOGGER.info("Member sync: %d with relay access", count)
-        except PatreonError as err:
-            _LOGGER.warning("Member sync failed: %s", err)
-        except Exception:
-            _LOGGER.exception("Member sync failed")
+        await sync_all(patreon, github)
         await asyncio.sleep(SYNC_INTERVAL)
 
 
@@ -78,8 +90,9 @@ async def run() -> None:
     db = Database(config_module.STATE_DIR / "controller.db")
     async with ClientSession() as session:
         patreon = Patreon(config, db, session)
-        sync = Debouncer(patreon.sync_members)
-        site = Web(config, db, patreon, sync.poke)
+        github = GitHub(config, db, session)
+        sync = Debouncer(lambda: sync_all(patreon, github))
+        site = Web(config, db, patreon, sync.poke, github)
         limits = Limits(config, db)
         runners = []
         for app, port in ((site.app(), config.web_port), (await plugin_app(Plugin(config, db, limits)), config.plugin_port)):
@@ -92,7 +105,7 @@ async def run() -> None:
             await patreon.ensure_webhook()
         except Exception as err:  # the hourly sync still works without it
             _LOGGER.warning("Couldn't set up the Patreon webhook: %s", err)
-        await asyncio.gather(keep_in_sync(patreon), watch_usage(limits, config, session))
+        await asyncio.gather(keep_in_sync(patreon, github), watch_usage(limits, config, session))
 
 
 async def dns() -> None:
