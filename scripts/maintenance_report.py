@@ -228,6 +228,10 @@ def build_report() -> str:
     rows.append(f"| Home Assistant | (tested on the test VM) | {ha_tag} ({ha_date[:10]}) |")
     if days_since(ha_date) < 8:
         actions.append(f"Home Assistant {ha_tag} came out this week: update the test VM to it, then run `python scripts/e2e.py`.")
+    ha_beta = http("https://version.home-assistant.io/beta.json", accept="application/json")["homeassistant"]["default"]
+    if "b" in ha_beta:  # between releases the beta channel carries the stable version
+        rows.append(f"| Home Assistant beta | (tested on the beta VM) | {ha_beta} |")
+        actions.append(f"Home Assistant {ha_beta} is in beta: run `python scripts/beta.py` before it's released.")
 
     scan_lines = []
     for file, label in (("scan.yaml", "Trivy image scan"), ("govulncheck.yaml", "govulncheck"), ("build.yaml", "Image build")):

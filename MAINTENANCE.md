@@ -15,7 +15,7 @@ from a commit to users and the live relay.
 | frp | `.github/workflows/frp.yaml` (upstream commit) builds our release; four places pin that release and its checksums (see below) | Maintenance report, govulncheck |
 | GitHub Actions | Each workflow, by commit SHA | Dependabot |
 | Relay server OS (Debian) | Not pinned: unattended security updates, restart at 04:30 when one needs it | Maintenance report (relay health) |
-| Home Assistant | Not ours; changes monthly | Maintenance report, test VM |
+| Home Assistant | Not ours; changes monthly, with a beta about a week before | Maintenance report, test VM, beta VM |
 | Secrets | `/etc/airbound-controller` on the relay; repository secret `OPS_TOKEN` | Patreon's creator token refreshes itself; the Cloudflare and GitHub tokens have their own expiry |
 
 ## What watches automatically (every Monday)
@@ -38,6 +38,7 @@ needs a decision under **Action needed**.
   - Rebuild frp with the newest Go, and a newer frp if there is one (see below).
   - Update Caddy, its modules, CrowdSec and the Python base image when newer ones are out.
   - Update the test VM to the newest Home Assistant and run the test round.
+- **When Home Assistant has a beta out** (the report says so, about a week before each monthly release): run `python scripts/beta.py`. A failure doesn't block other releases, but fix it and release before HA's release day, or report it to Home Assistant if the fault is theirs.
   - Release through the normal path below.
 - **Within 48 hours:** a critical vulnerability that the internet can reach. That means frps on the relays, Caddy, Home Assistant's login path, or OpenSSL/Python in the add-on. Fix it, test it, release it.
 - **Release gate:** `scripts/release.py` refuses to promote a release when the last scan is older than 7 days, a scan failed, or a critical finding is open, unless the release is the fix for it. Test results count only for the exact commit they ran on; commits that change nothing but documentation (`*.md`, `docs/`, `assets/`) may reuse the last result.
@@ -62,6 +63,7 @@ commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulnch
   - Checks the hosted relay end to end, and the MFA guard against 23 path spellings.
   - Runs MFA enforcement with a throwaway user.
   - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, goes back to the hosted relay, and stops the VPS.
+- **Beta check** (`scripts/beta.py`, about 15 minutes): starts the beta VM (Home Assistant OS on the beta channel, stopped otherwise), updates the Supervisor, HA OS and Home Assistant to the newest beta, installs or updates AirBound from `next`, and runs all integration tests with a self-signed address. Then it stops the VM.
 - **Relay staging** (`scripts/relay_staging.py`): installs `relay-server/` on the test VPS, then checks:
   - that every service starts with its sandbox
   - that the frp plugin refuses fake clients

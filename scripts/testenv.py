@@ -2,7 +2,8 @@
 
 The test environment's private addresses live in .env (never committed):
 PROXMOX_HOST, PROXMOX_KEY, TEST_VPS_VMID, TEST_VPS_IP, TEST_VPS_KEY,
-RELAY_SSH, RELAY_KEY, RELAY_DOMAIN, plus the HA test VM's HA_URL/HA_TOKEN.
+RELAY_SSH, RELAY_KEY, RELAY_DOMAIN, the HA test VM's HA_URL/HA_WS/HA_TOKEN,
+and the beta VM's BETA_VMID/BETA_HA_TOKEN (scripts/beta.py).
 """
 
 from __future__ import annotations
