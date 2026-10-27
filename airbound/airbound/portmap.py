@@ -93,6 +93,8 @@ def ssdp_location(answer: str) -> str | None:
 
 def find_control_url(description: str, base: str) -> tuple[str, str] | None:
     """(control URL, service type) of the router's WAN connection service."""
+    if "<!DOCTYPE" in description.upper() or "<!ENTITY" in description.upper():
+        return None  # a router description never needs a DTD; refuse entity tricks outright
     root = ElementTree.fromstring(description)
     for service in root.iter():
         if not service.tag.endswith("service"):

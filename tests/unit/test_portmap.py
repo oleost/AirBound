@@ -47,3 +47,10 @@ def test_find_control_url_in_nested_devices():
 def test_soap_body():
     body = soap_body("urn:svc", "AddPortMapping", {"NewExternalPort": 9443, "NewProtocol": "TCP"})
     assert '<u:AddPortMapping xmlns:u="urn:svc"><NewExternalPort>9443</NewExternalPort><NewProtocol>TCP</NewProtocol>' in body
+
+
+def test_router_description_with_a_dtd_is_refused():
+    from airbound.portmap import find_control_url
+
+    evil = '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaa">]><root><service><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType><controlURL>/ctl</controlURL></service></root>'
+    assert find_control_url(evil, "http://192.168.1.1:5000") is None

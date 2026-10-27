@@ -1,12 +1,13 @@
-FROM caddy:2.11.7-builder AS caddy-build
+# Base images are pinned by digest (multi-arch index), so a re-pointed tag can't change what we build on.
+FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9227460374d46097d5 AS caddy-build
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.14.1 \
     --output /usr/bin/caddy
 
-FROM crowdsecurity/crowdsec:v1.8.1 AS crowdsec
+FROM crowdsecurity/crowdsec:v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880670c62f2755ced17524107f71a AS crowdsec
 
-FROM python:3.13.9-alpine3.22 AS frpc
+FROM python:3.13.9-alpine3.22@sha256:e5fa639e49b85986c4481e28faa2564b45aa8021413f31026c3856e5911618b1 AS frpc
 ARG BUILD_ARCH=amd64
 ARG FRP_VERSION=0.71.0
 RUN case "$BUILD_ARCH" in \
@@ -19,7 +20,7 @@ RUN case "$BUILD_ARCH" in \
     && tar -xzf /tmp/frp.tgz -C /tmp \
     && mv /tmp/frp_${FRP_VERSION}_linux_${ARCH}/frpc /usr/local/bin/frpc
 
-FROM python:3.13.9-alpine3.22
+FROM python:3.13.9-alpine3.22@sha256:e5fa639e49b85986c4481e28faa2564b45aa8021413f31026c3856e5911618b1
 ARG BUILD_VERSION=dev
 ENV AIRBOUND_VERSION=$BUILD_VERSION
 COPY --from=caddy-build /usr/bin/caddy /usr/local/bin/caddy

@@ -35,6 +35,16 @@ async def ingress_only(request: web.Request, handler):
 
 
 @web.middleware
+async def json_only(request: web.Request, handler):
+    """Changes must come as JSON. A page on another site can only send a "simple"
+    request (form or text) without asking first, so this shuts out cross-site
+    requests even if the browser sent the ingress cookie along."""
+    if request.method == "POST" and request.content_type != "application/json":
+        raise web.HTTPUnsupportedMediaType()
+    return await handler(request)
+
+
+@web.middleware
 async def friendly_errors(request: web.Request, handler):
     try:
         return await handler(request)
@@ -73,7 +83,7 @@ class Panel:
         self._ha_upstream = ha_upstream
 
     def app(self) -> web.Application:
-        app = web.Application(middlewares=[ingress_only, friendly_errors])
+        app = web.Application(middlewares=[ingress_only, json_only, friendly_errors])
         r = app.router
         r.add_get("/", self.index)
         r.add_static("/static", STATIC)
