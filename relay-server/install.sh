@@ -38,7 +38,7 @@ esac
 echo "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3-venv openssl curl ca-certificates >/dev/null
+apt-get install -y -qq python3-venv openssl curl ca-certificates nftables >/dev/null
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -80,10 +80,20 @@ FREE_PATREON_USERS=
 MAX_DEVICES=2
 BANDWIDTH=4MB
 GRACE_DAYS=3
+# Fair use: past DEVICE_MONTHLY_GB a Home Assistant runs at THROTTLED_BANDWIDTH for the
+# rest of the month; past SERVER_MONTHLY_GB sent by the server, everyone runs at EMERGENCY_BANDWIDTH.
+DEVICE_MONTHLY_GB=300
+THROTTLED_BANDWIDTH=1MB
+SERVER_MONTHLY_GB=15000
+EMERGENCY_BANDWIDTH=512KB
+# Optional: alerts for the operator, for example https://ntfy.sh/<a long random topic>
+ALERT_URL=
 SITE_KEY=$(openssl rand -hex 24)
 EOF
   echo "Created $CONF/controller.env: fill in CAMPAIGN_ID and RELAY_TIER_ID, then run this again."
 fi
+# Added in later versions: kept once created.
+grep -q '^HUB_ADMIN_PASSWORD=' "$CONF/controller.env" || echo "HUB_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$CONF/controller.env"
 chown -R root:airbound-controller "$CONF"
 chmod 0750 "$CONF"
 chmod 0640 "$CONF"/*
@@ -118,10 +128,17 @@ transport.tls.force = true
 transport.tls.certFile = "$HUB/server.crt"
 transport.tls.keyFile = "$HUB/server.key"
 transport.maxPoolCount = 5
+# Clients send a heartbeat every 30 seconds; the controller checks each one.
+transport.heartbeatTimeout = 90
 maxPortsPerClient = 1
 allowPorts = [{ single = 1 }]
 log.to = "console"
 log.level = "info"
+# Traffic counters for fair use, read by the controller. Localhost only.
+webServer.addr = "127.0.0.1"
+webServer.port = 7400
+webServer.user = "controller"
+webServer.password = "$HUB_ADMIN_PASSWORD"
 
 [[httpPlugins]]
 name = "airbound"
@@ -140,6 +157,8 @@ auth.token = "airbound-hosted-relay"
 transport.tls.enable = true
 transport.tls.trustedCaFile = "$HUB/ca.crt"
 transport.tls.serverName = "airbound-hosted-relay"
+transport.heartbeatInterval = 30
+transport.heartbeatTimeout = 90
 loginFailExit = false
 log.to = "console"
 log.level = "warn"
@@ -182,7 +201,7 @@ EOF
 chown -R root:airbound "$HUB"
 chmod 0755 "$HUB"
 chmod 0644 "$HUB"/*
-chmod 0640 "$HUB/server.key" "$HUB/site.toml"  # the hub's key and the website's relay key
+chmod 0640 "$HUB/server.key" "$HUB/site.toml" "$HUB/frps.toml"  # keys and the admin password
 mkdir -p /var/lib/airbound-web
 chown airbound:airbound /var/lib/airbound-web
 
@@ -219,6 +238,9 @@ User=airbound-controller
 WorkingDirectory=$APP
 ExecStart=$APP/venv/bin/python -m airbound_relay
 ReadWritePaths=/var/lib/airbound-controller
+MemoryMax=200M
+CPUQuota=50%
+TasksMax=64
 $HARDENING
 
 [Install]
@@ -237,6 +259,9 @@ ExecStart=/usr/local/bin/airbound-hub -c $HUB/frps.toml
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 LimitNOFILE=65536
+MemoryMax=450M
+CPUQuota=80%
+TasksMax=512
 $HARDENING
 
 [Install]
@@ -253,6 +278,9 @@ User=airbound
 Environment=HOME=/var/lib/airbound-web XDG_DATA_HOME=/var/lib/airbound-web XDG_CONFIG_HOME=/var/lib/airbound-web
 ExecStart=/usr/local/bin/airbound-web run --config $HUB/Caddyfile --adapter caddyfile
 ReadWritePaths=/var/lib/airbound-web
+MemoryMax=150M
+CPUQuota=30%
+TasksMax=128
 $HARDENING
 
 [Install]
@@ -267,7 +295,45 @@ After=airbound-hub.service
 [Service]
 User=airbound
 ExecStart=/usr/local/bin/airbound-site -c $HUB/site.toml
+MemoryMax=64M
+CPUQuota=20%
+TasksMax=64
 $HARDENING
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Per-address connection limits, so one address can't flood the hub. Only ports 443 and 7000.
+cat > "$HUB/limits.nft" <<'EOF'
+table inet airbound_limits
+delete table inet airbound_limits
+table inet airbound_limits {
+	set conns_https { type ipv4_addr; flags dynamic; size 65536; }
+	set new_https { type ipv4_addr; flags dynamic; timeout 1m; size 65536; }
+	set conns_tunnel { type ipv4_addr; flags dynamic; size 65536; }
+	set new_tunnel { type ipv4_addr; flags dynamic; timeout 10m; size 65536; }
+	chain input {
+		type filter hook input priority filter - 5; policy accept;
+		tcp dport 443 ct state new add @conns_https { ip saddr ct count over 256 } counter drop
+		tcp dport 443 ct state new update @new_https { ip saddr limit rate over 60/second burst 120 packets } counter drop
+		tcp dport 7000 ct state new add @conns_tunnel { ip saddr ct count over 32 } counter drop
+		tcp dport 7000 ct state new update @new_tunnel { ip saddr limit rate over 20/minute burst 40 packets } counter drop
+	}
+}
+EOF
+chmod 0644 "$HUB/limits.nft"
+cat > /etc/systemd/system/airbound-limits.service <<EOF
+[Unit]
+Description=AirBound per-address connection limits (nftables)
+After=nftables.service
+Before=airbound-hub.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f $HUB/limits.nft
+ExecStop=/usr/sbin/nft delete table inet airbound_limits
 
 [Install]
 WantedBy=multi-user.target
@@ -285,6 +351,8 @@ if systemctl list-unit-files airbound-relay.service >/dev/null 2>&1 && systemctl
 fi
 
 systemctl daemon-reload
+systemctl enable airbound-limits >/dev/null 2>&1
+systemctl restart airbound-limits
 for UNIT in airbound-controller airbound-hub airbound-web airbound-site; do
   systemctl enable "$UNIT" >/dev/null 2>&1
   systemctl restart "$UNIT"

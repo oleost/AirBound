@@ -12,6 +12,7 @@ the only one frpc trusts, whatever the website sends.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -57,11 +58,20 @@ async def poll_link(session: ClientSession, claim: str, poll: str) -> dict:
     return data
 
 
+ACCOUNT_CACHE = 600  # the health checks run every few seconds while the panel is open
+_accounts: dict[str, tuple[float, dict]] = {}
+
+
 async def account(session: ClientSession, key: str) -> dict:
     """{state: active | grace | expired | unlinked, fqdn, grace_until, join_url, manage_url}"""
+    cached = _accounts.get(key)
+    if cached and time.monotonic() - cached[0] < ACCOUNT_CACHE:
+        return cached[1]
     status, data = await _call(session, "GET", "/api/v1/device", token=key)
     if status == 404:
-        return {"state": "unlinked"}
-    if status != 200:
+        data = {"state": "unlinked"}
+    elif status != 200:
         raise HostedError(f"The hosted relay answered {status}.")
+    _accounts.clear()  # only the current key matters
+    _accounts[key] = (time.monotonic(), data)
     return data

@@ -3,7 +3,8 @@
 A Home Assistant's frpc sends its device key as metadata. It may only log in
 while its membership gives access, may only publish an HTTPS proxy for its own
 hostname, and is disconnected at the next heartbeat once access ends. The
-bandwidth limit is set here, so a client can't raise its own.
+bandwidth limit is set here, so a client can't raise its own; when it should
+change (fair use, see limits.py), the next heartbeat makes the tunnel reconnect.
 """
 
 from __future__ import annotations
@@ -13,14 +14,16 @@ import time
 from . import access
 from .config import Config
 from .db import Database, Device
+from .limits import Limits
 
 SEEN_EVERY = 300  # write last_seen at most every 5 minutes per device
 
 
 class Plugin:
-    def __init__(self, config: Config, db: Database) -> None:
+    def __init__(self, config: Config, db: Database, limits: Limits | None = None) -> None:
         self._config = config
         self._db = db
+        self._limits = limits or Limits(config, db)
         self._seen: dict[str, float] = {}
 
     def handle(self, op: str, content: dict, now: float | None = None) -> dict:
@@ -62,10 +65,12 @@ class Plugin:
             return reject(f"this device may only publish {hostname}")
         if device is None:  # the site itself is not rate limited
             return allow()
+        bandwidth = self._limits.bandwidth_for(device.id, now)
+        self._limits.given(device.id, bandwidth)
         return {
             "reject": False,
             "unchange": False,
-            "content": {**content, "bandwidth_limit": self._config.bandwidth, "bandwidth_limit_mode": "server"},
+            "content": {**content, "bandwidth_limit": bandwidth, "bandwidth_limit_mode": "server"},
         }
 
     def _ping(self, content: dict, now: float) -> dict:
@@ -76,6 +81,8 @@ class Plugin:
         if device and now - self._seen.get(device.id, 0) > SEEN_EVERY:
             self._seen[device.id] = now
             self._db.seen(device.id, now)
+        if device and self._limits.needs_reconnect(device.id, now):
+            return reject("fair-use speed changed: reconnecting")
         return allow()
 
 

@@ -42,8 +42,15 @@ class Config:
     max_devices: int = 2  # Home Assistants per membership
     bandwidth: str = "4MB"  # per Home Assistant, each direction (frp syntax)
     grace_days: int = 3  # access after a membership lapses, to fix a failed payment
+    device_monthly_gb: int = 300  # fair use per Home Assistant and month (in + out)
+    throttled_bandwidth: str = "1MB"  # past that, for the rest of the month
+    server_monthly_gb: int = 15000  # what the server may send a month before everyone slows down
+    emergency_bandwidth: str = "512KB"  # everyone, past the server's allowance
+    alert_url: str = ""  # optional ntfy-style URL for the operator's alerts
     web_port: int = 7500  # public pages and API, behind Caddy
     plugin_port: int = 7600  # frps server plugin, localhost only
+    hub_admin_port: int = 7400  # frps admin API, localhost only, for traffic counters
+    hub_admin_password: str = ""
 
     @property
     def base_url(self) -> str:
@@ -85,4 +92,10 @@ def load(config_dir: Path = CONFIG_DIR) -> Config:
         max_devices=int(env.get("MAX_DEVICES", "2")),
         bandwidth=env.get("BANDWIDTH", "4MB"),
         grace_days=int(env.get("GRACE_DAYS", "3")),
+        device_monthly_gb=int(env.get("DEVICE_MONTHLY_GB", "300")),
+        throttled_bandwidth=env.get("THROTTLED_BANDWIDTH", "1MB"),
+        server_monthly_gb=int(env.get("SERVER_MONTHLY_GB", "15000")),
+        emergency_bandwidth=env.get("EMERGENCY_BANDWIDTH", "512KB"),
+        alert_url=env.get("ALERT_URL", ""),
+        hub_admin_password=env.get("HUB_ADMIN_PASSWORD", ""),
     )

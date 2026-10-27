@@ -59,7 +59,7 @@ def privacy(config: Config) -> str:
     return f"""<div class="card"><h1>Privacy</h1>
 <p>The hosted relay keeps as little as possible:</p><ul>
 <li><b>Your Patreon user id</b> and whether your membership includes the relay. Not your name or email address.</li>
-<li><b>For each linked Home Assistant:</b> its random address on {escape(config.domain)}, a hash of its key, and when it was last connected.</li>
+<li><b>For each linked Home Assistant:</b> its random address on {escape(config.domain)}, a hash of its key, when it was last connected, and how much data it used each month (for the fair-use limit, kept for three months).</li>
 <li><b>Connection logs</b> (address and time) are kept for at most 14 days to stop abuse.</li>
 </ul>
 <p>Traffic to your Home Assistant is end-to-end encrypted. The relay can't read it, and nothing about it is stored.</p>
@@ -88,7 +88,7 @@ def terms(config: Config) -> str:
 <ul>
 <li>You're responsible for your Home Assistant and who can log in to it. AirBound requires two-step login, but keep Home Assistant updated and use strong passwords.</li>
 <li>Use the relay for your own Home Assistant only, not for anything illegal, for sharing large amounts of data or for attacking others. Access can be removed for abuse.</li>
-<li>Each membership covers up to {config.max_devices} Home Assistant installations, with a fair-use bandwidth limit.</li>
+<li>Each membership covers up to {config.max_devices} Home Assistant installations. Fair use: each runs at up to {escape(config.bandwidth)}/s, and past {config.device_monthly_gb} GB in a calendar month at {escape(config.throttled_bandwidth)}/s for the rest of that month. If the whole server nears its own monthly limit, everyone may be slowed down until the month ends.</li>
 </ul>
 <h2>Payments, cancelling and refunds</h2>
 <p>Patreon handles all payments, cancelling and refunds under <a href="https://www.patreon.com/policy/legal" target="_blank" rel="noopener">its own terms</a>; AirBound never sees your card. You can cancel any time on Patreon. Access ends when Patreon reports that the membership has ended, after a grace period of {config.grace_days} days. Because the membership supports development rather than buying uptime, outages don't give a refund.</p>

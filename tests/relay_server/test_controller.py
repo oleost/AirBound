@@ -185,3 +185,55 @@ def test_terms_say_hobby_project_without_guarantee_and_are_linked_everywhere():
     assert 'href="/terms"' in pages.page("x", "", CONFIG)
     assert 'href="/terms"' in pages.confirm_code("c", "ABC123")
     assert 'href="/terms"' in pages.needs_membership(CONFIG, "c")
+
+
+def test_fair_use_slows_a_device_down_past_its_monthly_allowance(tmp_path):
+    from airbound_relay.limits import GB, Limits
+
+    db = Database(tmp_path / "db.sqlite")
+    device, key = linked(db)
+    limits = Limits(CONFIG, db)
+    plugin = Plugin(CONFIG, db, limits)
+    now = 1_790_000_000.0
+    name = f"{device.id}.airbound"
+    fqdn = f"{device.hostname}.airbound.dev"
+
+    assert plugin.handle("NewProxy", proxy(device.id, key, [fqdn]), now)["content"]["bandwidth_limit"] == CONFIG.bandwidth
+    assert limits.record({name: 0}, None, now) == []  # baseline
+    assert limits.record({name: 100 * GB}, None, now) == []
+    ping = {"user": {"user": device.id, "metas": {"key": key}}}
+    assert plugin.handle("Ping", ping, now)["reject"] is False
+
+    alerts = limits.record({name: 50 * GB}, None, now)  # the counter went down: a new day, all of it is new
+    assert db.traffic("2026-09", device.id) == 150 * GB and limits.device_over(device.id, now) is False
+    alerts = limits.record({name: 250 * GB}, None, now)
+    assert len(alerts) == 1 and "passed 300 GB" in alerts[0]
+    assert plugin.handle("Ping", ping, now)["reject"] is True  # reconnect for the new speed
+    result = plugin.handle("NewProxy", proxy(device.id, key, [fqdn]), now)
+    assert result["content"]["bandwidth_limit"] == CONFIG.throttled_bandwidth
+    assert plugin.handle("Ping", ping, now)["reject"] is False
+    assert limits.record({name: 260 * GB}, None, now) == []  # alerted once
+
+
+def test_fair_use_server_allowance_slows_everyone_and_warns_first(tmp_path):
+    from airbound_relay.limits import GB, Limits
+
+    db = Database(tmp_path / "db.sqlite")
+    device, _key = linked(db)
+    limits = Limits(CONFIG, db)
+    now = 1_790_000_000.0
+    limits.record({}, 0, now)
+    assert "of its allowance" in limits.record({}, 12_500 * GB, now)[0]
+    assert limits.bandwidth_for(device.id, now) == CONFIG.bandwidth
+    assert "past its allowance" in limits.record({}, 15_100 * GB, now)[0]
+    assert limits.bandwidth_for(device.id, now) == CONFIG.emergency_bandwidth
+    later = now + 40 * 86400  # next month
+    assert limits.bandwidth_for(device.id, later) == CONFIG.bandwidth
+
+
+def test_fair_use_keeps_three_months():
+    from airbound_relay.limits import month_of, months_ago
+
+    now = 1_790_000_000.0  # 2026-09
+    assert month_of(now) == "2026-09"
+    assert months_ago(now, 2) == "2026-07"

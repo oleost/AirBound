@@ -1,8 +1,9 @@
 """The controller's database: Patreon accounts, devices (Home Assistants) and link requests.
 
 Only what's needed is kept: the Patreon user id, whether the membership gives
-access, and per device a hash of its key, its hostname and when it was last seen.
-No names, email addresses or traffic data.
+access, per device a hash of its key, its hostname and when it was last seen,
+and for fair use how much data it used each month (kept for three months). No
+names, email addresses or anything about the traffic's content.
 """
 
 from __future__ import annotations
@@ -43,6 +44,12 @@ CREATE TABLE IF NOT EXISTS claims (
     device_key TEXT,
     created REAL NOT NULL,
     expires REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS traffic (
+    month TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    PRIMARY KEY (month, device_id)
 );
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
@@ -207,6 +214,28 @@ class Database:
 
     def device(self, device_id: str) -> Device | None:
         return self._device(self._db.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone())
+
+    # Monthly traffic, for fair use. "server" is what the whole server sent.
+
+    def traffic(self, month: str, device_id: str) -> int:
+        row = self._db.execute("SELECT bytes FROM traffic WHERE month = ? AND device_id = ?", (month, device_id)).fetchone()
+        return row["bytes"] if row else 0
+
+    def add_traffic(self, month: str, device_id: str, amount: int) -> None:
+        self._db.execute(
+            "INSERT INTO traffic (month, device_id, bytes) VALUES (?, ?, ?) "
+            "ON CONFLICT(month, device_id) DO UPDATE SET bytes = bytes + excluded.bytes",
+            (month, device_id, amount),
+        )
+
+    def server_traffic(self, month: str) -> int:
+        return self.traffic(month, "server")
+
+    def add_server_traffic(self, month: str, amount: int) -> None:
+        self.add_traffic(month, "server", amount)
+
+    def forget_traffic_before(self, month: str) -> None:
+        self._db.execute("DELETE FROM traffic WHERE month < ?", (month,))
 
     # Small persistent values (the creator token after refreshes, the webhook secret)
 

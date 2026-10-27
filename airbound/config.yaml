@@ -1,5 +1,5 @@
 name: AirBound
-version: "0.11.4"
+version: "0.11.5"
 slug: airbound
 description: "Work in progress, not ready for use: secure remote access to Home Assistant without a subscription"
 stage: experimental

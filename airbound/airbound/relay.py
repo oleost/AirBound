@@ -171,6 +171,9 @@ auth.token = "{hosted.AUTH_TOKEN}"
 transport.tls.enable = true
 transport.tls.trustedCaFile = "{hosted.CA_FILE.as_posix()}"
 transport.tls.serverName = "{hosted.SERVER_NAME}"
+# The relay checks the membership and the speed limit at every heartbeat.
+transport.heartbeatInterval = 30
+transport.heartbeatTimeout = 90
 loginFailExit = false
 log.to = "console"
 log.level = "warn"

@@ -98,7 +98,7 @@ New supporters get a 7-day free trial, and Patreon shows the price in your own c
 **What the relay can and can't see**
 
 - It routes each connection by the address name and passes it on **without decrypting it**. It never sees passwords, pages or camera images.
-- It sees which addresses connect, when, and how much data passes. Connection logs are kept for at most 14 days.
+- It sees which addresses connect, when, and how much data passes. Connection logs are kept for at most 14 days, and monthly data totals for three months (fair use: up to 4 MB/s, and slower for the rest of the month past 300 GB).
 - It stores your Patreon member id and whether your membership includes the relay, not your name, email address or card. See the [privacy page](https://airbound.dev/privacy).
 
 **Being honest about trust.** Whoever runs a domain can, in principle, get a certificate for any name under it. That includes the operator of airbound.dev. It can't be done quietly, though: every certificate is public, and AirBound warns you if one appears for your address that your Home Assistant didn't make. If you'd rather not depend on that, use your own domain with your own server or your router. The add-on works the same way.

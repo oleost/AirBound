@@ -65,6 +65,22 @@ to your domain.
 | `MAX_DEVICES` | `2` | Home Assistants per membership; linking a third unlinks the one seen least recently |
 | `BANDWIDTH` | `4MB` | Per Home Assistant and direction, in frp's notation |
 | `GRACE_DAYS` | `3` | Access after a membership lapses, to fix a failed payment |
+| `DEVICE_MONTHLY_GB` | `300` | Fair use per Home Assistant and calendar month (in + out) |
+| `THROTTLED_BANDWIDTH` | `1MB` | Speed past that allowance, for the rest of the month |
+| `SERVER_MONTHLY_GB` | `15000` | What the server may send in a month (stay under your provider's included traffic) |
+| `EMERGENCY_BANDWIDTH` | `512KB` | Speed for everyone past the server's allowance |
+| `ALERT_URL` | | Optional [ntfy](https://ntfy.sh)-style URL; alerts always go to the journal too |
+
+## Keeping one member from taking the whole server
+
+| Guard | How |
+| --- | --- |
+| Speed | Every Home Assistant gets a server-side bandwidth limit when its tunnel is created; the client can't change it. |
+| Monthly traffic | The controller reads each tunnel's traffic from the hub's local admin API every 5 minutes. Past the per-device allowance that Home Assistant is slowed down for the rest of the month; past the server's allowance, everyone is. The next heartbeat (every 30 seconds) makes the tunnel reconnect at the new speed. |
+| Membership | Checked at login and at every heartbeat, so a lapsed member is dropped within a minute after the grace period. |
+| Connections | nftables limits each address to 256 open and 60 new connections a second on port 443, and 32 open and 20 new a minute on port 7000 (`airbound-limits`). |
+| Memory and CPU | Each service has a systemd `MemoryMax`, `CPUQuota` and `TasksMax`, so one can't starve the others. |
+| Alerts | Crossed allowances, 80% of the server's traffic, high load, low memory and a full disk. |
 
 ## Terms
 
@@ -76,6 +92,7 @@ it fits you.
 ## Privacy
 
 The controller keeps the Patreon user id, whether the membership gives access, and
-for each linked Home Assistant its address, a hash of its key and when it was last
-connected. Connection logs are kept for 14 days (journald). Nothing about the
+for each linked Home Assistant its address, a hash of its key, when it was last
+connected and how much data it used each month (for fair use, kept for three
+months). Connection logs are kept for 14 days (journald). Nothing about the
 traffic itself is stored or readable.
