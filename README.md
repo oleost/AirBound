@@ -64,7 +64,7 @@ The first step asks how your phone should reach Home Assistant. You can change i
 | Setup | Log in with Patreon, about 5 minutes | One command on a small VPS | Forward one port |
 | Router changes | None | None | One port forward (or automatic, with UPnP/NAT-PMP) |
 | Your own domain | Not needed: you get `something.airbound.dev` | A domain on Cloudflare (free account) | A domain on Cloudflare (free account) |
-| Cost | AirBound membership, 7-day free trial | A VPS, about €4–5 a month | Free |
+| Cost | Support on Patreon, 7-day free trial | A VPS, about €4–5 a month | Free |
 | Home address hidden | Yes | Yes | No |
 
 <p align="center"><img src="docs/screenshots/connection.png" alt="Choosing how to connect: hosted relay, your own server or your router" width="80%"></p>
@@ -88,7 +88,12 @@ The first step asks how your phone should reach Home Assistant. You can change i
 
 ## The hosted relay
 
-The hosted relay is for people who don't want to deal with domains or servers. It runs on a server in Germany, at [airbound.dev](https://airbound.dev), and is paid for by members on [Patreon](https://www.patreon.com/c/airbound). New members get a 7-day free trial, and Patreon shows the price in your own currency.
+The hosted relay is for people who don't want to deal with domains or servers. It runs on a server in Germany, at [airbound.dev](https://airbound.dev).
+
+> [!NOTE]
+> **AirBound is a hobby project, made by one person in their spare time.** Support on [Patreon](https://www.patreon.com/c/airbound) pays for its development, and access to the hosted relay comes with it as a thank-you. You're supporting a project, not buying a service: the relay is run on a best-effort basis, with no guarantee of uptime, no support agreement and no liability if it's down. Don't rely on it for alarms or anything safety-related, and keep in mind that you can switch to your own server or router at any time. See the [terms](https://airbound.dev/terms).
+
+New supporters get a 7-day free trial, and Patreon shows the price in your own currency.
 
 **What the relay can and can't see**
 
@@ -103,7 +108,7 @@ The hosted relay is for people who don't want to deal with domains or servers. I
 ## Requirements
 
 - **Home Assistant OS**, 2026.8 or later (AirBound uses the HTTP settings API added then)
-- **Hosted relay:** an AirBound membership on Patreon (7-day free trial)
+- **Hosted relay:** the Relay tier on Patreon (7-day free trial; best effort, see the [terms](https://airbound.dev/terms))
 - **Your own server or router:** a domain managed by Cloudflare (a free account is enough), plus a small Linux VPS (Debian or Ubuntu) or access to your router's settings
 
 ## Development
@@ -139,4 +144,4 @@ AirBound is not affiliated with Home Assistant or Nabu Casa. If you can, conside
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). AirBound is provided as is, without warranty of any kind; see the license for the full text.

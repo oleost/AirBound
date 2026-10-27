@@ -174,3 +174,14 @@ def test_rate_limit():
     assert not limit.allow("a", now=2)
     assert limit.allow("b", now=2)
     assert limit.allow("a", now=61.5)
+
+
+def test_terms_say_hobby_project_without_guarantee_and_are_linked_everywhere():
+    from airbound_relay import pages
+
+    terms = pages.terms(CONFIG)
+    for phrase in ("hobby project", "as is", "not liable", "not buying a service", "30 days"):
+        assert phrase in terms
+    assert 'href="/terms"' in pages.page("x", "", CONFIG)
+    assert 'href="/terms"' in pages.confirm_code("c", "ABC123")
+    assert 'href="/terms"' in pages.needs_membership(CONFIG, "c")

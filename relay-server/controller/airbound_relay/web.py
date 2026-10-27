@@ -75,6 +75,7 @@ class Web:
         app = web.Application(client_max_size=256 * 1024)
         app.router.add_get("/", self.home)
         app.router.add_get("/privacy", self.privacy)
+        app.router.add_get("/terms", self.terms)
         app.router.add_get("/relay-ca.pem", self.ca)
         app.router.add_post("/api/v1/claims", self.new_claim)
         app.router.add_get("/api/v1/claims/{claim}", self.poll_claim)
@@ -98,6 +99,9 @@ class Web:
 
     async def privacy(self, _request: web.Request) -> web.Response:
         return self._page("Privacy", pages.privacy(self._config))
+
+    async def terms(self, _request: web.Request) -> web.Response:
+        return self._page("Terms", pages.terms(self._config))
 
     async def ca(self, _request: web.Request) -> web.Response:
         return web.Response(text=HUB_CA.read_text() if HUB_CA.exists() else "", content_type="application/x-pem-file")

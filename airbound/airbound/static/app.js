@@ -232,7 +232,7 @@ steps.welcome = () =>
     <div class="card">
       <h2>You'll need one of these</h2>
       <ul class="plain">
-        <li><b>The easiest:</b> an AirBound membership on Patreon for the hosted relay. Nothing to set up, and it starts with a 7-day free trial.</li>
+        <li><b>The easiest:</b> support AirBound on Patreon and use the hosted relay as a thank-you. Nothing to set up, and it starts with a 7-day free trial.</li>
         <li><b>Or do it yourself, for free:</b> your own domain on Cloudflare, plus either a small rented server or access to your router's settings.</li>
       </ul>
       <p class="muted small">Setting up takes about 5 minutes with the hosted relay, 10–15 on your own.</p>
@@ -344,7 +344,8 @@ steps.connection = () => {
       "Easiest",
       [
         'Nothing to set up: no domain, no server and no router changes. You get an address like <span class="mono">x7k2….airbound.dev</span>.',
-        "Needs an AirBound membership on Patreon. It starts with a 7-day free trial, and you can cancel any time.",
+        "Comes with supporting AirBound on Patreon. It starts with a 7-day free trial, and you can cancel any time.",
+        'AirBound is a hobby project: the relay is best effort, with no guarantee of uptime. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Terms</a>',
         "The relay can't read anything. The traffic stays encrypted all the way to your home, and the certificate is made by your own Home Assistant.",
       ],
       "Use the hosted relay"
@@ -458,6 +459,7 @@ steps.hosted = () => {
       <div class="card">
         ${h.state === "expired" ? '<div class="notice warn"><p>The link expired before the login finished. Start again.</p></div>' : ""}
         <p>You log in with Patreon on AirBound's website. New members start with a 7-day free trial on Patreon, and you can cancel any time.</p>
+        <div class="notice info"><p><b>A hobby project, not a company.</b> Patreon support pays for AirBound's development, and the relay comes with it as a thank-you. It's run on a best-effort basis, with no guarantee of uptime and no liability if it's down, so don't rely on it for alarms or anything safety-related. You can switch to your own server or router at any time. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Read the terms</a></p></div>
         <p class="muted small">AirBound only learns your Patreon member id and whether the membership includes the relay, never your name, email address or card.</p>
         ${errorBox(view.error)}
         <div class="actions"><button class="primary" data-action="hosted-start" ${view.busy ? "disabled" : ""}>${view.busy ? '<span class="spinner"></span> Starting…' : "Log in with Patreon"}</button></div>

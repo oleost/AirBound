@@ -66,6 +66,13 @@ to your domain.
 | `BANDWIDTH` | `4MB` | Per Home Assistant and direction, in frp's notation |
 | `GRACE_DAYS` | `3` | Access after a membership lapses, to fix a failed payment |
 
+## Terms
+
+`/terms` shows the terms for airbound.dev: a hobby project, the relay as a
+best-effort thank-you for Patreon supporters, with no warranty or liability. If you
+run a relay of your own, edit `terms()` in `controller/airbound_relay/pages.py` so
+it fits you.
+
 ## Privacy
 
 The controller keeps the Patreon user id, whether the membership gives access, and
