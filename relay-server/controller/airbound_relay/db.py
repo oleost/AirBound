@@ -183,6 +183,12 @@ class Database:
         )
         return device, key
 
+    def count_devices(self) -> int:
+        return self._db.execute("SELECT COUNT(*) FROM devices WHERE revoked = 0").fetchone()[0]
+
+    def count_entitled(self) -> int:
+        return self._db.execute("SELECT COUNT(*) FROM accounts WHERE entitled = 1").fetchone()[0]
+
     def seen(self, device_id: str, now: float | None = None) -> None:
         self._db.execute("UPDATE devices SET last_seen = ? WHERE id = ?", (now or time.time(), device_id))
 

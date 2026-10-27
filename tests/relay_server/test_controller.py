@@ -285,3 +285,15 @@ def test_join_and_manage_links_follow_the_account():
     config = Config(domain="airbound.dev", tier_id=TIER, github_sponsorable="oleost")
     assert config.join_url_for("gh:42") == "https://github.com/sponsors/oleost"
     assert "patreon.com" in config.join_url_for("12345")
+
+
+def test_ops_report_has_the_health_fields(tmp_path, monkeypatch):
+    from airbound_relay import ops
+
+    db = Database(tmp_path / "db.sqlite")
+    linked(db)
+    monkeypatch.setattr(ops, "health_problems", lambda: [])  # reads Linux-only load and memory
+    report = ops.report(CONFIG, db, 60.0)
+    for key in ("reboot_required", "days_since_unattended_upgrade", "disk_used_percent", "frp_build", "website_certificate_days_left", "devices"):
+        assert key in report
+    assert report["devices"] == 1 and report["accounts_with_access"] == 1

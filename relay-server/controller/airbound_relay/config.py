@@ -57,6 +57,7 @@ class Config:
     github_webhook_secret: str = ""
     github_sponsorable: str = ""  # the GitHub account people sponsor, e.g. oleost
     github_min_cents: int = 100  # monthly sponsorship that gives access (GitHub tiers are whole dollars)
+    ops_token: str = ""  # lets the weekly maintenance report read GET /api/v1/ops
 
     @property
     def base_url(self) -> str:
@@ -129,4 +130,5 @@ def load(config_dir: Path = CONFIG_DIR) -> Config:
         github_webhook_secret=env.get("GITHUB_WEBHOOK_SECRET", ""),
         github_sponsorable=env.get("GITHUB_SPONSORABLE", ""),
         github_min_cents=int(env.get("GITHUB_MIN_CENTS", "100")),
+        ops_token=env.get("OPS_TOKEN", ""),
     )

@@ -101,6 +101,7 @@ EOF
 fi
 # Added in later versions: kept once created.
 grep -q '^HUB_ADMIN_PASSWORD=' "$CONF/controller.env" || echo "HUB_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$CONF/controller.env"
+grep -q '^OPS_TOKEN=' "$CONF/controller.env" || echo "OPS_TOKEN=$(openssl rand -hex 32)" >> "$CONF/controller.env"
 chown -R root:airbound-controller "$CONF"
 chmod 0750 "$CONF"
 chmod 0640 "$CONF"/*
@@ -219,6 +220,9 @@ mkdir -p "$APP"
 "$APP/venv/bin/pip" install -q --disable-pip-version-check -r "$HERE/controller/requirements.txt"
 rm -rf "$APP/airbound_relay"
 cp -r "$HERE/controller/airbound_relay" "$APP/"
+# Which controller code is installed, for the maintenance report.
+(cd "$HERE/controller" && find airbound_relay -type f -name '*.py' -o -name '*.txt' | sort | xargs cat | sha256sum | cut -c1-12) > "$APP/BUILD"
+date -u +%Y-%m-%dT%H:%MZ >> "$APP/BUILD"
 mkdir -p /var/lib/airbound-controller
 chown airbound-controller:airbound-controller /var/lib/airbound-controller
 chmod 0700 /var/lib/airbound-controller

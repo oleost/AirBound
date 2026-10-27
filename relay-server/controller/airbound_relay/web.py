@@ -21,7 +21,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-from . import access, pages
+from . import access, ops, pages
 from .config import Config
 from .db import Database
 from . import github as gh
@@ -83,6 +83,7 @@ class Web:
         app.router.add_post("/api/v1/claims", self.new_claim)
         app.router.add_get("/api/v1/claims/{claim}", self.poll_claim)
         app.router.add_get("/api/v1/device", self.device_status)
+        app.router.add_get("/api/v1/ops", self.ops_report)
         app.router.add_get("/link/{claim}", self.link_page)
         app.router.add_get("/link/{claim}/login", self.link_login)
         app.router.add_get("/patreon/callback", self.callback)
@@ -177,6 +178,14 @@ class Web:
                 "manage_url": self._config.manage_url_for(device.patreon_id),
             }
         )
+
+    async def ops_report(self, request: web.Request) -> web.Response:
+        """The relay's health for the weekly maintenance report; only with the operator's token."""
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not self._config.ops_token or not secrets.compare_digest(token, self._config.ops_token):
+            return web.json_response({"error": "not found"}, status=404)
+        days = await asyncio.to_thread(ops.certificate_days_left, "127.0.0.1", self._config.domain)
+        return web.json_response(ops.report(self._config, self._db, days))  # the database stays on this thread
 
     # Pages the person sees
 

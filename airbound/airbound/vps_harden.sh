@@ -145,5 +145,7 @@ harden_updates() {
     apt-get install -y -qq unattended-upgrades >/dev/null 2>&1 || { echo "Updates: couldn't install unattended-upgrades."; return 0; }
   fi
   printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
-  echo "Updates: security updates install automatically."
+  # A kernel or library fix only takes effect after a restart; do it at night, when needed.
+  printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "04:30";\n' > /etc/apt/apt.conf.d/52airbound-reboot
+  echo "Updates: security updates install automatically, with a restart at 04:30 when one needs it."
 }

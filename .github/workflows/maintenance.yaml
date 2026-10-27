@@ -1,0 +1,32 @@
+# Weekly maintenance report: pinned versions against the newest ones, the scans,
+# and the relay's health, posted as a comment on the "Weekly maintenance report"
+# issue (GitHub emails it). Runs after the Monday scans. See MAINTENANCE.md.
+name: Maintenance report
+
+on:
+  schedule:
+    - cron: "45 6 * * 1"  # Mondays, after scan.yaml and govulncheck.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write  # the report issue and its weekly comment
+      security-events: read  # open Trivy findings
+      actions: read  # last runs and the govulncheck artifact
+      pull-requests: read  # open Dependabot pull requests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+        run: python scripts/maintenance_report.py --post
