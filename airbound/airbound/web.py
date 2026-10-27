@@ -116,12 +116,17 @@ class Panel:
         """The setup steps with their status, plus where the panel should open."""
         settings = self._store.settings
         (http,) = await self._supervisor.ws({"type": "http/config"})
+        stable = http.get("stable") or {}
         people = await users.list_people(self._supervisor, user_id(request))
+        attention = {}
+        if ha_settings.changes(stable):  # e.g. a newer AirBound recommends another value
+            attention["ha_settings"] = "Update recommended"
         computed = steps.compute(
             settings,
-            http_ok=checks.check_http(http.get("stable") or {}).ok,
+            http_ok=checks.check_http(stable).ok,
             blocking=users.blocking(people),
             people=len(people),
+            attention=attention,
         )
         return {
             **self._state(request),

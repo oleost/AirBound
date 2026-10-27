@@ -186,18 +186,24 @@ const LOCK = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"
 
 // The step list: names and status, completed steps show what's set up, steps that
 // depend on something unfinished are greyed out with the reason (PatternFly wizard).
+function overviewSub() {
+  const updates = state.steps.filter((s) => s.attention).length;
+  if (updates) return `${updates} update${updates > 1 ? "s" : ""} recommended`;
+  return state.complete ? "Everything is set up" : "Status and settings";
+}
+
 function stepNav() {
   const items = [];
   if (state.settings.live) {
     items.push(`<li><button class="nav-item ${current === "overview" ? "current" : ""}" data-action="goto" data-step="overview" ${current === "overview" ? 'aria-current="step"' : ""}>
       <span class="nav-icon overview" aria-hidden="true">◎</span><span class="nav-text"><span class="nav-title">Overview</span>
-      <span class="nav-sub">${state.complete ? "Everything is set up" : "Status and settings"}</span></span></button></li>`);
+      <span class="nav-sub">${overviewSub()}</span></span></button></li>`);
   }
   state.steps.forEach((s, i) => {
     const isCurrent = s.id === current;
-    const icon = s.locked ? LOCK : s.done ? "✓" : String(i + 1);
-    const cls = ["nav-item", isCurrent && "current", s.done && "done", s.locked && "locked"].filter(Boolean).join(" ");
-    const sub = s.locked ? s.reason : s.done ? s.summary : isCurrent ? "You are here" : "Not done yet";
+    const icon = s.locked ? LOCK : s.attention ? "!" : s.done ? "✓" : String(i + 1);
+    const cls = ["nav-item", isCurrent && "current", s.done && "done", s.attention && "attention", s.locked && "locked"].filter(Boolean).join(" ");
+    const sub = s.locked ? s.reason : s.attention || (s.done ? s.summary : isCurrent ? "You are here" : "Not done yet");
     items.push(`<li><button class="${cls}" ${s.locked ? "disabled" : `data-action="goto" data-step="${s.id}"`} ${isCurrent ? 'aria-current="step"' : ""}>
       <span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-text"><span class="nav-title">${esc(s.title)}</span>
       <span class="nav-sub">${esc(sub)}</span></span>${s.locked ? `<span class="sr-only">Locked. ${esc(s.reason)}</span>` : ""}</button></li>`);
@@ -721,9 +727,9 @@ steps.overview = () => {
   const st = view.status;
   const setup = state.steps
     .map(
-      (step) => `<div class="row"><div class="grow"><b>${esc(step.title)}</b>
+      (step) => `<div class="row"><div class="grow"><b>${esc(step.title)}</b>${step.attention ? ` <span class="pill warn">${esc(step.attention)}</span>` : ""}
         <div class="muted small">${esc(step.done ? step.summary : step.locked ? step.reason : "Not done yet")}</div></div>
-        ${step.locked ? "" : `<button class="link" data-action="goto" data-step="${step.id}">${step.done ? "Change" : "Set up"}</button>`}</div>`
+        ${step.locked ? "" : `<button class="${step.attention ? "" : "link"}" data-action="goto" data-step="${step.id}">${step.attention ? "Review" : step.done ? "Change" : "Set up"}</button>`}</div>`
     )
     .join("");
   const allOk = st && st.checks.every((c) => c.ok);

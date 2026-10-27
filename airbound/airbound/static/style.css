@@ -103,6 +103,7 @@ main {
 }
 .nav-item.current .nav-icon { border-color: var(--accent); color: var(--accent); }
 .nav-item.done .nav-icon { background: var(--good); border-color: var(--good); color: #fff; }
+.nav-item.attention .nav-icon { background: var(--warn); border-color: var(--warn); color: var(--bg); font-weight: 700; }
 .nav-item.locked .nav-icon { border-style: dashed; }
 .nav-icon.overview { border-color: var(--accent); color: var(--accent); font-size: 14px; }
 .nav-text { display: grid; min-width: 0; }

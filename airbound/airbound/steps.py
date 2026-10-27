@@ -35,6 +35,7 @@ class Step:
     locked: bool
     reason: str  # why it's locked, in words
     summary: str  # what's set up, in words
+    attention: str = ""  # done and working, but a newer AirBound recommends a change, in words
 
 
 def _is_public(host: str) -> bool:
@@ -44,8 +45,12 @@ def _is_public(host: str) -> bool:
         return bool(host)  # a hostname; checked when going live
 
 
-def compute(settings: Settings, http_ok: bool, blocking: list[str], people: int) -> list[Step]:
+def compute(
+    settings: Settings, http_ok: bool, blocking: list[str], people: int, attention: dict[str, str] | None = None
+) -> list[Step]:
+    """attention: step id -> a recommended change for a step that is already done."""
     s = settings
+    attention = attention or {}
     relay = s.mode == "relay"
     hosted = s.mode == "hosted"
     done = {
@@ -92,6 +97,7 @@ def compute(settings: Settings, http_ok: bool, blocking: list[str], people: int)
                 locked=bool(missing),
                 reason=f"Needs: {', '.join(missing)}" if missing else "",
                 summary=summaries[step_id],
+                attention=attention.get(step_id, "") if done[step_id] else "",
             )
         )
     return steps

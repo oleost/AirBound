@@ -72,3 +72,15 @@ def test_live_but_phone_step_unseen_still_opens_that_step():
     settings = Settings(**DOMAIN, mode="relay", relay_host="1.2.3.4", live=True)
     steps = compute(settings, http_ok=True, blocking=[], people=1)
     assert landing(settings, steps) == "devices"
+
+
+def test_a_done_step_can_ask_for_attention():
+    from airbound.settings import Settings
+    from airbound.steps import compute
+
+    s = Settings(mode="hosted", tls="hosted", domain="airbound.dev", hostname="x7k2", hosted_key="k", live=True)
+    steps = {st.id: st for st in compute(s, http_ok=True, blocking=[], people=1, attention={"ha_settings": "Update recommended", "users": "x"})}
+    assert steps["ha_settings"].done and steps["ha_settings"].attention == "Update recommended"
+    # Only done steps carry it; a step that isn't done already shows what to do.
+    steps = {st.id: st for st in compute(s, http_ok=False, blocking=[], people=1, attention={"ha_settings": "Update recommended"})}
+    assert steps["ha_settings"].attention == ""
