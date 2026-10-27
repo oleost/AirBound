@@ -1,6 +1,6 @@
 """Release gate: promote the tested commit on next to main (what users get), then deploy the relay.
 
-    python scripts/release.py                 check everything, then release
+    python scripts/release.py                 check everything, then release (no prompt)
     python scripts/release.py --check         only check
     python scripts/release.py --accept-critical "why"   release despite open critical findings (e.g. this is the fix)
 
@@ -18,6 +18,7 @@ Home Assistants follow main; the test VM follows next.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
@@ -129,15 +130,22 @@ def checks(accept_critical: str) -> tuple[list[str], list[str], bool]:
 
 
 def main() -> None:
-    accept = sys.argv[sys.argv.index("--accept-critical") + 1] if "--accept-critical" in sys.argv else ""
-    problems, notes, relay_changed, addon_changed = checks(accept)
+    # argparse, so --help and unknown or misspelled flags stop here instead of releasing
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--check", action="store_true", help="only check, release nothing")
+    parser.add_argument("--accept-critical", metavar="WHY", default="", help="release despite open critical findings")
+    parser.add_argument("urls", nargs="*", metavar="https://...", help="passed on to scripts/relay_deploy.py")
+    args = parser.parse_args()
+    if bad := [u for u in args.urls if not u.startswith("https://")]:
+        parser.error(f"unexpected argument: {' '.join(bad)}")
+    problems, notes, relay_changed, addon_changed = checks(args.accept_critical)
     for note in notes:
         print(f"✓ {note}")
     for problem in problems:
         print(f"✗ {problem}")
     if problems:
         raise SystemExit("\nNot released.")
-    if "--check" in sys.argv:
+    if args.check:
         print("\nReady to release.")
         return
 
@@ -146,7 +154,7 @@ def main() -> None:
     if not addon_changed:
         print(f"main -> {commit[:12]} (no add-on change, so no new version or GitHub release)")
         if relay_changed:
-            subprocess.run([sys.executable, str(ROOT / "scripts/relay_deploy.py"), *[a for a in sys.argv[1:] if a.startswith("https://")]], check=True)
+            subprocess.run([sys.executable, str(ROOT / "scripts/relay_deploy.py"), *args.urls], check=True)
         return
     run(["git", "tag", "-a", f"v{ver}", commit, "-m", f"AirBound {ver}"])
     run(["git", "push", "origin", f"v{ver}"])
@@ -155,7 +163,7 @@ def main() -> None:
     run(["gh", "release", "create", f"v{ver}", "-R", REPO, "--title", f"AirBound {ver}", "--notes", log or f"AirBound {ver}"], quiet=True)
     print(f"Released {ver}: main -> {commit[:12]}")
     if relay_changed:
-        subprocess.run([sys.executable, str(ROOT / "scripts/relay_deploy.py"), *[a for a in sys.argv[1:] if a.startswith("https://")]], check=True)
+        subprocess.run([sys.executable, str(ROOT / "scripts/relay_deploy.py"), *args.urls], check=True)
 
 
 if __name__ == "__main__":

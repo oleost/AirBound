@@ -37,3 +37,4 @@ plus the relay server behind the hosted service at airbound.dev
 `scripts/release.py` (maintainer only) refuses to release a commit without fresh
 scans and a passing test round for that exact commit; relay changes also need
 relay staging, and it then runs `scripts/relay_deploy.py`.
+Without flags it releases at once, with no prompt: run `--check` first.
