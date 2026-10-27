@@ -8,6 +8,7 @@
 #   airbound-controller  who may connect (frps plugin), Patreon login, the website's API
 #   airbound-web         Caddy: the website on the domain itself, with its own certificate
 #   airbound-site        frpc: publishes the website through the hub, like any Home Assistant
+#   airbound-firewall    nftables: only SSH, 443 and 7000 get in (see airbound/airbound/vps_harden.sh)
 #
 # Secrets live in /etc/airbound-controller and never in this repository.
 set -eu
@@ -20,6 +21,8 @@ fail() { echo "AirBound hosted relay: $1" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || fail "run this as root."
 command -v systemctl >/dev/null 2>&1 || fail "this server needs systemd (Debian or Ubuntu)."
 [ -d "$HERE/controller/airbound_relay" ] || fail "run this from the relay-server directory."
+HARDEN="$HERE/../airbound/airbound/vps_harden.sh"  # shared with the personal relay's installer
+[ -f "$HARDEN" ] || fail "run this from a full copy of the repository (airbound/airbound/vps_harden.sh is missing)."
 
 case "$(uname -m)" in
   x86_64 | amd64)
@@ -358,10 +361,9 @@ for UNIT in airbound-controller airbound-hub airbound-web airbound-site; do
   systemctl restart "$UNIT"
 done
 
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-  ufw allow 443/tcp >/dev/null
-  ufw allow 7000/tcp >/dev/null
-fi
+# A firewall, SSH keys only and automatic security updates.
+. "$HARDEN"
+harden_server "443 7000"
 
 sleep 2
 for UNIT in airbound-controller airbound-hub airbound-web airbound-site; do

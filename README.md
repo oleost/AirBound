@@ -41,7 +41,7 @@
    <details>
    <summary>Or add it by hand</summary>
 
-   In Home Assistant, go to **Settings → Add-ons → Add-on store**, open the **⋮** menu at the top right, choose **Repositories**, and add:
+   In Home Assistant, go to **Settings â†’ Add-ons â†’ Add-on store**, open the **â‹®** menu at the top right, choose **Repositories**, and add:
 
    ```text
    https://github.com/oleost/HA-AirBound
@@ -64,7 +64,7 @@ The first step asks how your phone should reach Home Assistant. You can change i
 | Setup | Log in with Patreon, about 5 minutes | One command on a small VPS | Forward one port |
 | Router changes | None | None | One port forward (or automatic, with UPnP/NAT-PMP) |
 | Your own domain | Not needed: you get `something.airbound.dev` | A domain on Cloudflare (free account) | A domain on Cloudflare (free account) |
-| Cost | Support on Patreon, 7-day free trial | A VPS, about €4–5 a month | Free |
+| Cost | Support on Patreon, 7-day free trial | A VPS, about â‚¬4â€“5 a month | Free |
 | Home address hidden | Yes | Yes | No |
 
 <p align="center"><img src="docs/screenshots/connection.png" alt="Choosing how to connect: hosted relay, your own server or your router" width="80%"></p>
@@ -84,6 +84,7 @@ The first step asks how your phone should reach Home Assistant. You can change i
 - **A hidden address.** A random name nobody can guess. On your own domain it's covered by a wildcard certificate, so the name never shows up in public certificate logs, and requests for any other name are dropped.
 - **Certificate watch.** AirBound searches the public Certificate Transparency logs and warns you if anyone else gets a certificate for your address. On your own domain a CAA record also forbids it outright.
 - **Attack protection.** CrowdSec watches the logs, blocks addresses that probe or guess passwords, and uses the community blocklist. Home Assistant's own login ban is turned on too.
+- **A locked-down relay server.** The one command that sets up your own server also turns on a firewall (only SSH and the relay's ports get in), SSH logins with keys only, and automatic security updates. The hosted relay runs the same setup.
 - **Status in Home Assistant.** Health checks in the panel, plus sensors, events and notifications, for example when someone logs in from a new address.
 
 ## The hosted relay

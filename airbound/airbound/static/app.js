@@ -408,7 +408,7 @@ steps.relay = () => {
         <button class="link" data-action="relay-new-key">Make a new key</button>
       </div>
       <p class="small"><b>Set up a relay before?</b> Run the command again on the same server. It updates the relay to this key.</p>
-      <p class="muted small">It installs the relay, opens TCP ports ${r?.public_port ?? 443} and ${r?.control_port ?? 7000} in the server's firewall and prints the server's address. The command contains a secret key, so don't share it.</p>
+      <p class="muted small">It installs the relay and secures the server: a firewall that only lets in SSH, ports ${r?.public_port ?? 443} and ${r?.control_port ?? 7000} and anything already running there, SSH logins with keys only (if you log in with a key), and automatic security updates. Then it prints the server's address. The command contains a secret key, so don't share it.</p>
     </div>
     <div class="card">
       <h2>3. Enter the server's address</h2>

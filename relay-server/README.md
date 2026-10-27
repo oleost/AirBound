@@ -8,9 +8,9 @@ friends.
 ## How it works
 
 ```text
-phone ──TLS──▶ :443 hub (frps) ──routes by name (SNI), no decryption──▶ tunnel ──▶ Home Assistant
-                     │
-                     └── asks the controller on every login, new proxy and heartbeat
+phone â”€â”€TLSâ”€â”€â–¶ :443 hub (frps) â”€â”€routes by name (SNI), no decryptionâ”€â”€â–¶ tunnel â”€â”€â–¶ Home Assistant
+                     â”‚
+                     â””â”€â”€ asks the controller on every login, new proxy and heartbeat
 ```
 
 | Service | What it does |
@@ -28,7 +28,7 @@ the private key never leaves the home and the relay can't decrypt anything.
 You need a small Debian or Ubuntu server with a public IPv4 address, a domain on
 Cloudflare, and a Patreon creator page with a tier for the relay.
 
-1. **Cloudflare:** create an API token with *Zone → DNS → Edit* and *Zone → Zone → Read* for the domain only, and lock it to the server's IP under *Client IP address filtering*. Turn off *Universal SSL* for the domain (SSL/TLS → Edge Certificates); nothing is proxied through Cloudflare, and its automatic certificate would cover every member's address.
+1. **Cloudflare:** create an API token with *Zone â†’ DNS â†’ Edit* and *Zone â†’ Zone â†’ Read* for the domain only, and lock it to the server's IP under *Client IP address filtering*. Turn off *Universal SSL* for the domain (SSL/TLS â†’ Edge Certificates); nothing is proxied through Cloudflare, and its automatic certificate would cover every member's address.
 2. **Patreon:** in the [developer portal](https://www.patreon.com/portal/registration/register-clients), create a client (API version 2) with the redirect URI `https://<your domain>/patreon/callback`.
 3. **Secrets on the server**, readable by root only. They never go in this repository:
 
@@ -80,6 +80,9 @@ to your domain.
 | Membership | Checked at login and at every heartbeat, so a lapsed member is dropped within a minute after the grace period. |
 | Connections | nftables limits each address to 256 open and 60 new connections a second on port 443, and 32 open and 20 new a minute on port 7000 (`airbound-limits`). |
 | Memory and CPU | Each service has a systemd `MemoryMax`, `CPUQuota` and `TasksMax`, so one can't starve the others. |
+| Firewall | `airbound-firewall` (nftables) lets in only SSH, 443, 7000 and anything else that already listened publicly when the installer ran; everything else is dropped. A server run by ufw or firewalld keeps that firewall instead. |
+| SSH | Password logins off and root by key only, once the person running the installer has an SSH key. |
+| Updates | Security updates install automatically (unattended-upgrades). |
 | Alerts | Crossed allowances, 80% of the server's traffic, high load, low memory and a full disk. |
 
 ## Terms

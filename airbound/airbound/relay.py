@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import datetime
+import gzip
 import ipaddress
 import logging
 import os
@@ -38,6 +39,7 @@ _LOGGER = logging.getLogger(__name__)
 
 FRPC_CONFIG = Path("/data/frpc.toml")
 INSTALL_TEMPLATE = Path(__file__).parent / "relay_install.sh"
+HARDEN_SCRIPT = Path(__file__).parent / "vps_harden.sh"
 RELAY_LISTENER = "127.0.0.1:8444"  # Caddy listener that expects a PROXY protocol header
 ADMIN = "127.0.0.1:7400"  # frpc's local status API
 PKI_DIR = Path("/data/relay")
@@ -120,10 +122,11 @@ def install_command(settings: Settings, pki: dict[str, str]) -> str:
         .replace("__PUBLIC_PORT__", str(settings.external_port))
         .replace("__SERVER_CERT__", pki["server.crt"].strip())
         .replace("__SERVER_KEY__", pki["server.key"].strip())
+        .replace("__HARDEN__", HARDEN_SCRIPT.read_text())
     )
-    encoded = base64.b64encode(script.encode()).decode()
+    encoded = base64.b64encode(gzip.compress(script.encode(), mtime=0)).decode()
     # Uses sudo where it exists; root-only servers (Debian's default) have no sudo and run sh directly.
-    return f"echo {encoded} | base64 -d | $(command -v sudo) sh"
+    return f"echo {encoded} | base64 -d | gunzip | $(command -v sudo) sh"
 
 
 def render_frpc(settings: Settings) -> str:

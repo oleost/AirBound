@@ -1,4 +1,5 @@
 import base64
+import gzip
 import re
 
 from airbound.caddy import render_caddyfile
@@ -26,8 +27,8 @@ def test_wizard_steps_per_mode():
 def test_install_command_embeds_settings_and_verifies_download():
     pki = make_pki()
     command = install_command(RELAY, pki)
-    assert command.startswith("echo ") and command.endswith(" | base64 -d | $(command -v sudo) sh")
-    script = base64.b64decode(command.split()[1]).decode()
+    assert command.startswith("echo ") and command.endswith(" | base64 -d | gunzip | $(command -v sudo) sh")
+    script = gzip.decompress(base64.b64decode(command.split()[1])).decode()
     assert 'TOKEN="abc123"' in script
     assert 'CONTROL_PORT="7000"' in script
     assert 'PUBLIC_PORT="443"' in script
@@ -35,6 +36,7 @@ def test_install_command_embeds_settings_and_verifies_download():
     assert pki["server.crt"].strip() in script and pki["server.key"].strip() in script
     assert "transport.tls.certFile" in script
     assert "__" not in script  # every placeholder was filled in
+    assert "harden_firewall()" in script and 'harden_server "$CONTROL_PORT $PUBLIC_PORT"' in script
 
 
 def test_frpc_config_tunnels_to_proxy_protocol_listener():
