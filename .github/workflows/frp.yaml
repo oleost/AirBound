@@ -1,0 +1,82 @@
+# Builds frp (frps for the relays, frpc for the add-on) from source with the
+# newest Go and current golang.org/x libraries, and publishes the archives as a
+# release of this repository.
+#
+# Why: the official frp 0.71.1 binaries are built with Go 1.26.8, and
+# govulncheck shows that frps really contains the crypto/tls code that reads
+# every incoming TLS ClientHello, with a fix only in a newer Go. frps faces the
+# internet on every relay, so we build it ourselves until upstream catches up.
+#
+# The archives keep upstream's names and layout (frp_<v>_linux_<arch>/frps), so
+# the installers only change where they download from and the checksum.
+name: Build frp
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/frp.yaml"]
+
+permissions:
+  contents: read
+
+env:
+  FRP_VERSION: "0.71.1"
+  FRP_COMMIT: "d8cf1800dc1abd7fda1828cab105d7a6b5a50eb1"  # the v0.71.1 tag; tags can move, commits can't
+  BUILD: "airbound1"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # create the release
+    steps:
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fatedier/frp
+          ref: ${{ env.FRP_COMMIT }}
+          path: src
+          persist-credentials: false
+      - name: Current golang.org/x libraries
+        working-directory: src
+        run: |
+          go get golang.org/x/net@latest golang.org/x/crypto@latest golang.org/x/text@latest golang.org/x/sys@latest
+          go mod tidy
+          git --no-pager diff --stat go.mod
+      - name: Test
+        working-directory: src
+        run: go test -tags noweb ./pkg/... ./server/... ./client/...
+      - name: Build
+        working-directory: src
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            dir="frp_${FRP_VERSION}_linux_${arch}"
+            mkdir -p "../dist/$dir"
+            for prog in frps frpc; do
+              CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "-s -w" -tags "${prog},noweb" -o "../dist/$dir/$prog" "./cmd/$prog"
+            done
+            cp LICENSE "../dist/$dir/"
+            tar -C ../dist -czf "../dist/$dir.tar.gz" "$dir"
+          done
+          cd ../dist && sha256sum ./*.tar.gz | sed 's| \./| |' > sha256sums.txt && cat sha256sums.txt
+          go version > ../dist/go-version.txt
+      - name: govulncheck on the result
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          for prog in frps frpc; do
+            echo "== $prog"
+            "$(go env GOPATH)/bin/govulncheck" -mode binary "dist/frp_${FRP_VERSION}_linux_amd64/$prog" | tee -a dist/govulncheck.txt || true
+          done
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="frp-v${FRP_VERSION}-${BUILD}"
+          notes="frp ${FRP_VERSION} (upstream commit ${FRP_COMMIT}) built from source by GitHub Actions with $(cat dist/go-version.txt) and current golang.org/x libraries, without the web dashboard. Used by AirBound's relay installers and add-on image. See .github/workflows/frp.yaml."
+          gh release create "$tag" dist/*.tar.gz dist/sha256sums.txt dist/govulncheck.txt \
+            --repo "${{ github.repository }}" --title "$tag" --notes "$notes" --latest=false
