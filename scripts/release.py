@@ -65,9 +65,13 @@ def checks(accept_critical: str) -> tuple[list[str], list[str], bool]:
     if run(["git", "tag", "-l", f"v{ver}"], quiet=True).strip():
         problems.append(f"v{ver} is already released; bump the version in airbound/config.yaml")
 
-    builds = gh_api(f"repos/{REPO}/actions/workflows/build.yaml/runs?head_sha={commit}&per_page=5").get("workflow_runs") or []
+    # The images come from the last commit that changed the add-on; later commits may only touch scripts.
+    image_commit = run(["git", "log", "-1", "--format=%H", commit, "--", "airbound", ".github/workflows/build.yaml"], quiet=True).strip()
+    builds = gh_api(f"repos/{REPO}/actions/workflows/build.yaml/runs?head_sha={image_commit}&per_page=5").get("workflow_runs") or []
     if not any(r["conclusion"] == "success" for r in builds):
-        problems.append(f"no successful image build for {commit[:12]}")
+        problems.append(f"no successful image build for {image_commit[:12]}, the last commit that changed the add-on")
+    else:
+        notes.append(f"images built from {image_commit[:12]}")
     missing = [a for a in ("amd64", "aarch64") if not image_published(a, ver)]
     if missing:
         problems.append(f"images for {ver} missing: {missing}")
