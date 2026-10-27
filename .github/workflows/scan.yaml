@@ -1,0 +1,77 @@
+# Scans the published add-on images for known vulnerabilities (Caddy, CrowdSec,
+# frp, Alpine, Python packages) with Trivy. Findings go to the repository's
+# Security tab and the run summary; they never block a release, so an upstream
+# problem with no fix yet can't hold back an AirBound fix.
+#
+# Runs after every image build, and weekly, since new vulnerabilities appear
+# without any change here.
+name: Scan add-on images
+
+on:
+  workflow_run:
+    workflows: ["Build add-on images"]
+    types: [completed]
+  schedule:
+    - cron: "17 5 * * 1"  # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      security-events: write  # upload SARIF to the Security tab
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Version
+        id: version
+        run: |
+          echo "version=$(sed -n 's/^version: "\(.*\)"$/\1/p' airbound/config.yaml)" >> "$GITHUB_OUTPUT"
+      - name: Scan (SARIF for the Security tab)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-addon-airbound:${{ steps.version.outputs.version }}
+          format: sarif
+          output: trivy-${{ matrix.arch }}.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          exit-code: "0"
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy-${{ matrix.arch }}.sarif
+          category: trivy-${{ matrix.arch }}
+      - name: Scan (table in the run summary)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-addon-airbound:${{ steps.version.outputs.version }}
+          format: table
+          output: trivy-${{ matrix.arch }}.txt
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          exit-code: "0"
+          skip-setup-trivy: true
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Trivy: ${{ matrix.arch }} image ${{ steps.version.outputs.version }}"
+            echo '```'
+            cat trivy-${{ matrix.arch }}.txt 2>/dev/null || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
