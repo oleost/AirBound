@@ -16,11 +16,7 @@
 
 **AirBound gives your Home Assistant its own secure web address.** It works in the Companion app on iPhone and Android and in any browser, at home, at work or on a borrowed computer, with nothing extra to install and no VPN. A step-by-step wizard in the Home Assistant sidebar does the whole setup, so you never need to read documentation.
 
-<p align="center">
-  <img src="docs/screenshots/overview.png" alt="The AirBound overview: remote access is on, with all health checks green" width="62%">
-  &nbsp;
-  <img src="docs/screenshots/overview-phone.png" alt="The same overview on a phone" width="26%">
-</p>
+<p align="center"><img src="docs/screenshots/hero.png" alt="The AirBound overview on a computer and a phone: remote access is on, with all health checks green" width="900"></p>
 
 ## Contents
 
@@ -53,7 +49,16 @@
 3. **Start it** and turn on **Show in sidebar**.
 4. **Open AirBound in the sidebar.** The wizard takes it from there: it explains every step, checks it for you, and only moves on when each part works.
 
-<p align="center"><img src="docs/screenshots/welcome.png" alt="The AirBound welcome page" width="80%"></p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/gallery-welcome.png" alt="The AirBound welcome page"></td>
+    <td width="50%"><img src="docs/screenshots/gallery-connect.png" alt="Choosing how to connect: hosted relay, your own server or your router"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>1.</b> The wizard explains what you need</td>
+    <td align="center"><b>2.</b> Pick how your phone reaches home</td>
+  </tr>
+</table>
 
 ## Three ways to connect
 
@@ -67,15 +72,18 @@ The first step asks how your phone should reach Home Assistant. You can change i
 | Cost | Support on Patreon, 7-day free trial | A VPS, about €4–5 a month | Free |
 | Home address hidden | Yes | Yes | No |
 
-<p align="center"><img src="docs/screenshots/connection.png" alt="Choosing how to connect: hosted relay, your own server or your router" width="80%"></p>
-
 **Linking to the hosted relay** works like signing in on a TV. AirBound shows a code, you open the link page, check that the code is the same, and log in with Patreon. AirBound picks up its address by itself.
 
-<p align="center">
-  <img src="docs/screenshots/link-code.png" alt="The link page on airbound.dev showing the code to compare" width="44%">
-  &nbsp;
-  <img src="docs/screenshots/hosted-linked.png" alt="AirBound in Home Assistant, linked with its new address" width="50%">
-</p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/gallery-link.png" alt="The link page on airbound.dev showing the code to compare"></td>
+    <td width="50%"><img src="docs/screenshots/gallery-address.png" alt="AirBound in Home Assistant, linked with its new three-word address"></td>
+  </tr>
+  <tr>
+    <td align="center">Check the code and log in with Patreon</td>
+    <td align="center">AirBound gets its address, like <code>otter-comet-maple.airbound.dev</code></td>
+  </tr>
+</table>
 
 ## How it keeps your home safe
 
