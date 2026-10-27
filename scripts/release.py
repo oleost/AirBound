@@ -77,8 +77,12 @@ def checks(accept_critical: str) -> tuple[list[str], list[str], bool]:
     run(["git", "fetch", "-q", "origin"], quiet=True)
     if run(["git", "rev-parse", "origin/next"], quiet=True).strip() != commit:
         problems.append("next isn't pushed (or is behind origin)")
-    if run(["git", "tag", "-l", f"v{ver}"], quiet=True).strip():
-        problems.append(f"v{ver} is already released; bump the version in airbound/config.yaml")
+    last_tag = run(["git", "describe", "--tags", "--abbrev=0", "--match", "v*", "origin/main"], check=False, quiet=True).strip()
+    addon_changed = not last_tag or bool(run(["git", "diff", "--name-only", last_tag, commit, "--", "airbound"], quiet=True).strip())
+    if addon_changed and run(["git", "tag", "-l", f"v{ver}"], quiet=True).strip():
+        problems.append(f"the add-on changed but v{ver} is already released; bump the version in airbound/config.yaml")
+    elif not addon_changed:
+        notes.append(f"add-on unchanged since {last_tag}: main moves, without a new version")
 
     # The images come from the last commit that changed the add-on; later commits may only touch scripts.
     image_commit = run(["git", "log", "-1", "--format=%H", commit, "--", "airbound", ".github/workflows/build.yaml"], quiet=True).strip()
@@ -114,18 +118,19 @@ def checks(accept_critical: str) -> tuple[list[str], list[str], bool]:
     ok, note = passed("e2e", commit)
     (notes if ok else problems).append(note)
 
-    relay_changed = bool(run(["git", "diff", "--name-only", "origin/main", commit, "--", *RELAY_PATHS], quiet=True).strip())
+    relay_files = run(["git", "diff", "--name-only", "origin/main", commit, "--", *RELAY_PATHS], quiet=True).split()
+    relay_changed = any(not f.endswith(".md") for f in relay_files)  # a README alone doesn't need a deploy
     if relay_changed:
         ok, note = passed("relay-staging", commit)
         (notes if ok else problems).append(note + " (the relay changed)")
     else:
         notes.append("relay unchanged since the last release")
-    return problems, notes, relay_changed
+    return problems, notes, relay_changed, addon_changed
 
 
 def main() -> None:
     accept = sys.argv[sys.argv.index("--accept-critical") + 1] if "--accept-critical" in sys.argv else ""
-    problems, notes, relay_changed = checks(accept)
+    problems, notes, relay_changed, addon_changed = checks(accept)
     for note in notes:
         print(f"✓ {note}")
     for problem in problems:
@@ -138,6 +143,11 @@ def main() -> None:
 
     ver, commit = version(), head_commit()
     run(["git", "push", "origin", f"{commit}:refs/heads/main"])  # fast-forward only: git refuses anything else
+    if not addon_changed:
+        print(f"main -> {commit[:12]} (no add-on change, so no new version or GitHub release)")
+        if relay_changed:
+            subprocess.run([sys.executable, str(ROOT / "scripts/relay_deploy.py"), *[a for a in sys.argv[1:] if a.startswith("https://")]], check=True)
+        return
     run(["git", "tag", "-a", f"v{ver}", commit, "-m", f"AirBound {ver}"])
     run(["git", "push", "origin", f"v{ver}"])
     previous = run(["git", "describe", "--tags", "--abbrev=0", f"v{ver}^"], check=False, quiet=True).strip()

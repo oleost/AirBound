@@ -75,6 +75,20 @@ def my_public_ip() -> str:
         return resp.read().decode().strip()
 
 
+async def clear_own_ban(p: "Panel", wait: int = 0) -> bool:
+    """Lift a CrowdSec block of this machine's address. The probes rightly look like an attack,
+    and CrowdSec registers the block some seconds later, so wait for it when asked to."""
+    ip = my_public_ip()
+    for _ in range(max(1, wait // 5)):
+        if any(b["ip"] == ip for b in (await p.call("GET", "api/bans"))["bans"]):
+            await p.call("POST", "api/bans/unban", {"ip": ip})
+            await asyncio.sleep(20)  # Caddy's bouncer picks up the change within its 15-second interval
+            return True
+        if wait:
+            await asyncio.sleep(5)
+    return False
+
+
 # ---------- scenarios ----------
 
 def unit() -> str:
@@ -103,6 +117,7 @@ async def hosted() -> str:
     session, p = await panel()
     async with session:
         url = await ensure_hosted(p)
+        await clear_own_ban(p)
         for _ in range(12):  # Caddy and the tunnel may still be starting after a deploy
             checks = (await p.call("GET", "api/status"))["checks"]
             if all(c["ok"] for c in checks) and status_code(url) == 200:
@@ -139,10 +154,7 @@ async def bypass() -> str:
         finally:
             async with HA() as ha:
                 await ha.call({"type": "config/auth/delete", "user_id": user_id})
-            # The probes look like an attack, and CrowdSec rightly blocks this address for it.
-            ip = my_public_ip()
-            if any(b["ip"] == ip for b in (await p.call("GET", "api/bans"))["bans"]):
-                await p.call("POST", "api/bans/unban", {"ip": ip})
+            await clear_own_ban(p, wait=45)
         if bypassed:
             raise RuntimeError(f"MFA BYPASS through: {bypassed}")
         return f"{len(BYPASS_STEPS)} path spellings, none finished a login without MFA"
@@ -177,6 +189,7 @@ async def own_relay() -> str:
                     raise RuntimeError("the relay never saw the tunnel")
             finally:
                 url = await ensure_hosted(p)
+        await clear_own_ban(p)
         if status_code(url) != 200:
             raise RuntimeError(f"back on the hosted relay, but {url} answers {status_code(url)}")
         exposure = re.search(r"(\d+\.\d+)\s+\w+", score)  # the line ends in a smiley with a colon
