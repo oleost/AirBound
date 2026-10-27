@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import time
 import ssl
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -15,7 +16,22 @@ from .supervisor import Supervisor
 PUBLIC_IP_SERVICES = ("https://api.ipify.org", "https://icanhazip.com", "https://ifconfig.me/ip")
 
 
-async def public_ip(session: ClientSession) -> str | None:
+PUBLIC_IP_CACHE = 120  # home addresses change rarely; the status page asks every 15 seconds
+_public_ip: tuple[float, str] | None = None
+
+
+async def public_ip(session: ClientSession, fresh: bool = False) -> str | None:
+    """This home's IPv4 address on the internet, cached briefly unless fresh is asked for."""
+    global _public_ip
+    if not fresh and _public_ip and time.monotonic() - _public_ip[0] < PUBLIC_IP_CACHE:
+        return _public_ip[1]
+    ip = await _ask_public_ip(session)
+    if ip:
+        _public_ip = (time.monotonic(), ip)
+    return ip
+
+
+async def _ask_public_ip(session: ClientSession) -> str | None:
     for url in PUBLIC_IP_SERVICES:
         try:
             async with session.get(url, timeout=ClientTimeout(total=5)) as resp:

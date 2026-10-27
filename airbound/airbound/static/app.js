@@ -23,11 +23,17 @@ async function api(path, body) {
 }
 
 // Polls fn every ms until stopPolling(); fn returns false to stop by itself.
+// Nothing is fetched while the page is hidden (a wall tablet, a phone in a pocket);
+// it catches up as soon as the page is shown again.
 function poll(fn, ms) {
   stopPolling();
   const token = {};
   timer = token;
   const tick = async () => {
+    if (document.hidden) {
+      token.id = null; // resumed by the visibilitychange listener
+      return;
+    }
     let again = true;
     try {
       again = (await fn()) !== false;
@@ -37,8 +43,13 @@ function poll(fn, ms) {
     if (timer === token && again) token.id = setTimeout(tick, ms);
     else if (timer === token) timer = null;
   };
+  token.tick = tick;
   tick();
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && timer && timer.id === null) timer.tick();
+});
 
 function stopPolling() {
   if (timer) clearTimeout(timer.id);

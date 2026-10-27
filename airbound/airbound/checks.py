@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import ipaddress
 import socket
+import time
 from dataclasses import asdict, dataclass
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -117,23 +119,27 @@ async def check_certificate(settings: Settings) -> Check:
     )
 
 
+async def resolve_all(name: str) -> set[str]:
+    """The IPv4 addresses a name points to, without blocking the event loop."""
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(name, 443, family=socket.AF_INET)
+    except OSError:
+        return set()
+    return {info[4][0] for info in infos}
+
+
 async def check_dns(settings: Settings, session: ClientSession) -> Check:
     if settings.mode == "hosted":
-        current = await relay.resolve_ipv4(hosted.RELAY_HOST)
-        try:
-            resolved = {info[4][0] for info in socket.getaddrinfo(settings.fqdn, 443, socket.AF_INET)}
-        except OSError:
-            resolved = set()
+        current, resolved = await asyncio.gather(relay.resolve_ipv4(hosted.RELAY_HOST), resolve_all(settings.fqdn))
         if current and current in resolved:
             return Check("dns", "Address", True, f"{settings.fqdn} points to AirBound's hosted relay.")
         return Check("dns", "Address", False, f"{settings.fqdn} doesn't point to AirBound's hosted relay right now. This is fixed on the relay's side; try again later.")
     relay_mode = settings.mode == "relay"
-    current = await relay.resolve_ipv4(settings.relay_host) if relay_mode else await network.public_ip(session)
+    current, resolved = await asyncio.gather(
+        relay.resolve_ipv4(settings.relay_host) if relay_mode else network.public_ip(session),
+        resolve_all(settings.fqdn),
+    )
     target = "your relay server" if relay_mode else "your home"
-    try:
-        resolved = {info[4][0] for info in socket.getaddrinfo(settings.fqdn, 443, socket.AF_INET)}
-    except OSError:
-        resolved = set()
     if current and current in resolved:
         return Check("dns", "Address", True, f"{settings.fqdn} points to {target} ({current}).")
     return Check(
@@ -179,6 +185,26 @@ async def check_protection(crowdsec: CrowdSec) -> Check:
     return Check("protection", "Attack protection", True, f"CrowdSec is watching for attacks. {blocked}")
 
 
+LOCK_CACHE = 600  # the CAA record only changes when going live; no need to ask Cloudflare on every check
+_lock_cache: dict[tuple[str, str], tuple[float, bool]] = {}
+
+
+async def certificates_locked(settings: Settings, session: ClientSession) -> bool | None:
+    """Whether the CAA record is in place; None when Cloudflare can't be asked."""
+    key = (settings.zone_id, settings.fqdn)
+    cached = _lock_cache.get(key)
+    if cached and time.monotonic() - cached[0] < LOCK_CACHE:
+        return cached[1]
+    try:
+        locked = await Cloudflare(session, settings.cloudflare_token).certificates_locked(settings.zone_id, settings.fqdn)
+    except CloudflareError:
+        return None
+    _lock_cache.clear()
+    if locked:  # a missing record is asked about again, so fixing it shows right away
+        _lock_cache[key] = (time.monotonic(), locked)
+    return locked
+
+
 async def check_certificate_lock(settings: Settings, session: ClientSession, certwatch: CertWatch | None) -> Check:
     """Nobody but AirBound may hold a certificate for the hostname."""
     title = "Certificate lock"
@@ -196,10 +222,7 @@ async def check_certificate_lock(settings: Settings, session: ClientSession, cer
         if checked:
             return Check("cert_lock", title, True, "Certificate logs show no certificate for this address except the ones this Home Assistant made.")
         return Check("cert_lock", title, True, "AirBound watches the public certificate logs for this address.")
-    try:
-        locked = await Cloudflare(session, settings.cloudflare_token).certificates_locked(settings.zone_id, settings.fqdn)
-    except CloudflareError:
-        locked = None
+    locked = await certificates_locked(settings, session)
     if locked is False:
         return Check(
             "cert_lock",
@@ -254,25 +277,31 @@ async def run_all(
     user_id: str | None,
     certwatch: CertWatch | None = None,
 ) -> list[Check]:
-    people = await users.list_people(supervisor, user_id)
-    (http,) = await supervisor.ws({"type": "http/config"})
-    providers = await outside_login_providers(session, await supervisor.ha_upstream())
+    async def providers() -> list[dict] | None:
+        return await outside_login_providers(session, await supervisor.ha_upstream())
+
+    # Independent checks run side by side, so the slowest one sets the pace.
+    (accounts, http), offered = await asyncio.gather(
+        supervisor.ws({"type": "config/auth/list"}, {"type": "http/config"}),  # one connection for both
+        providers(),
+    )
+    people = users.describe(accounts, users.enrolled_user_ids(), user_id)
     results = [
         check_mfa(people),
         check_http(http.get("stable") or {}),
-        check_password_login(providers),
+        check_password_login(offered),
     ]
     if settings.live:
+        pending = []
         if crowdsec:
-            results.append(await check_protection(crowdsec))
+            pending.append(check_protection(crowdsec))
         if settings.mode == "hosted":
-            membership = await check_membership(settings, session)
-            if membership:
-                results.append(membership)
+            pending.append(check_membership(settings, session))
         if settings.mode in ("relay", "hosted"):
-            results.append(await check_relay(settings, frpc, session))
-        results.append(await check_certificate(settings))
+            pending.append(check_relay(settings, frpc, session))
+        pending.append(check_certificate(settings))
         if settings.tls in ("cloudflare", "hosted"):
-            results.append(await check_dns(settings, session))
-            results.append(await check_certificate_lock(settings, session, certwatch))
+            pending.append(check_dns(settings, session))
+            pending.append(check_certificate_lock(settings, session, certwatch))
+        results += [c for c in await asyncio.gather(*pending) if c]
     return results

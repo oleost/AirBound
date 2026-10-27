@@ -19,6 +19,7 @@ import logging
 import os
 import secrets
 import shutil
+import time
 from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ DEFAULT_DATA = Path("/var/lib/crowdsec-default")
 AUTH_LOG = Path("/data/logs/auth.log")
 ACCESS_LOG = Path("/data/logs/access.log")
 LAPI = "127.0.0.1:8081"
+BANS_CACHE = 10  # seconds
 COLLECTIONS = ("crowdsecurity/caddy", "crowdsecurity/home-assistant")
 # syslog-logs also holds "non-syslog", which makes plain log files readable at all.
 # whitelists keeps private addresses from ever being banned.
@@ -138,6 +140,7 @@ class CrowdSec:
     def __init__(self) -> None:
         self._process: asyncio.subprocess.Process | None = None
         self.ready = False
+        self._bans: tuple[float, list[dict]] | None = None
 
     @property
     def running(self) -> bool:
@@ -241,9 +244,16 @@ class CrowdSec:
             await self._process.wait()
 
     async def bans(self) -> list[dict]:
+        """Active bans. Each cscli run starts a large Go program, so the status page and
+        the ban list share one answer for a few seconds."""
         if not self.ready:
             return []
-        return parse_decisions(await self.cscli("decisions", "list", "-o", "json"))
+        if self._bans and time.monotonic() - self._bans[0] < BANS_CACHE:
+            return self._bans[1]
+        bans = parse_decisions(await self.cscli("decisions", "list", "-o", "json"))
+        self._bans = (time.monotonic(), bans)
+        return bans
 
     async def unban(self, ip: str) -> None:
         await self.cscli("decisions", "delete", "--ip", ip)
+        self._bans = None

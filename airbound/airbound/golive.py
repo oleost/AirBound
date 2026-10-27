@@ -97,7 +97,7 @@ class GoLive:
                     "Enter the relay server's public IP address."
                 )
         else:
-            ip = await network.public_ip(self._session)
+            ip = await network.public_ip(self._session, fresh=True)
             if not ip:
                 raise RuntimeError("AirBound couldn't find your internet address. Check that Home Assistant has internet access.")
         cloudflare = Cloudflare(self._session, settings.cloudflare_token)
@@ -156,7 +156,7 @@ async def keep_dns_current(store: Store, session: ClientSession) -> None:
         if not (settings.live and settings.tls == "cloudflare") or settings.mode == "relay":
             continue  # in relay mode the record points to the relay, which doesn't move
         try:
-            ip = await network.public_ip(session)
+            ip = await network.public_ip(session, fresh=True)
             if ip and ip != settings.public_ip:
                 await Cloudflare(session, settings.cloudflare_token).upsert_a_record(settings.zone_id, settings.fqdn, ip)
                 store.update(public_ip=ip)

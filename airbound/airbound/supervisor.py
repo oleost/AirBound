@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import itertools
 import os
+import time
 from typing import Any
 
 from aiohttp import ClientSession, WSMsgType
 
 SUPERVISOR_URL = "http://supervisor"
 CORE_WS_URL = "ws://supervisor/core/websocket"
+UPSTREAM_CACHE = 60  # Home Assistant's port only changes with a restart
 
 
 class SupervisorError(Exception):
@@ -21,6 +23,7 @@ class Supervisor:
         self._session = session
         self._token = token or os.environ.get("SUPERVISOR_TOKEN", "")
         self._ids = itertools.count(1)
+        self._upstream: tuple[float, str] | None = None
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -53,8 +56,12 @@ class Supervisor:
 
     async def ha_upstream(self) -> str:
         """host:port where Caddy and the guard reach Home Assistant."""
+        if self._upstream and time.monotonic() - self._upstream[0] < UPSTREAM_CACHE:
+            return self._upstream[1]
         info = await self.get("/core/info")
-        return f"homeassistant:{info['port']}"
+        upstream = f"homeassistant:{info['port']}"
+        self._upstream = (time.monotonic(), upstream)
+        return upstream
 
     async def ws(self, *commands: dict[str, Any]) -> list[Any]:
         """Run Home Assistant WebSocket commands in order and return their results."""
