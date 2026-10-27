@@ -11,7 +11,7 @@ import logging
 import sys
 import time
 
-from aiohttp import ClientSession, web
+from aiohttp import ClientError, ClientSession, web
 
 from . import config as config_module
 from .cloudflare import ensure_records
@@ -55,7 +55,11 @@ async def watch_usage(limits: Limits, config: config_module.Config, session: Cli
     alerted: dict[str, float] = {}
     while True:
         try:
-            proxies = await hub_traffic(session, config) if config.hub_admin_password else {}
+            try:
+                proxies = await hub_traffic(session, config) if config.hub_admin_password else {}
+            except (ClientError, TimeoutError) as err:  # the hub starts after the controller
+                _LOGGER.warning("Couldn't read the hub's traffic counters: %s", err)
+                proxies = {}
             for message in limits.record(proxies, sent_bytes(interface)):
                 await alert(session, config, message)
             for problem in health_problems():
