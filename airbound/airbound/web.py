@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import io
 import ipaddress
+import logging
 from pathlib import Path
 
 import segno
@@ -22,6 +23,8 @@ from .settings import ALL_STEPS, COMMON_HOSTNAMES, Store, random_hostname, valid
 from .supervisor import Supervisor
 
 INGRESS_PROXY = "172.30.32.2"
+_LOGGER = logging.getLogger(__name__)
+_refused_remotes: set[str] = set()
 STATIC = Path(__file__).parent / "static"
 # Changes whenever the script or stylesheet changes, so browsers fetch the new ones after an update.
 ASSET_VERSION = hashlib.sha256(b"".join((STATIC / name).read_bytes() for name in ("app.js", "style.css"))).hexdigest()[:12]
@@ -30,6 +33,9 @@ ASSET_VERSION = hashlib.sha256(b"".join((STATIC / name).read_bytes() for name in
 @web.middleware
 async def ingress_only(request: web.Request, handler):
     if request.remote != INGRESS_PROXY:
+        if request.remote not in _refused_remotes and len(_refused_remotes) < 20:
+            _refused_remotes.add(request.remote)
+            _LOGGER.warning("Refused a panel request from %s: only Home Assistant's ingress (%s) may open the panel", request.remote, INGRESS_PROXY)
         raise web.HTTPForbidden()
     return await handler(request)
 
