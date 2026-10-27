@@ -14,6 +14,8 @@
 set -eu
 
 FRP_VERSION="0.71.1"
+# frp built from source with the newest Go by .github/workflows/frp.yaml (see why there).
+FRP_RELEASE="frp-v0.71.1-airbound1"
 CADDY_VERSION="2.11.7"
 HERE=$(cd "$(dirname "$0")" && pwd)
 
@@ -27,12 +29,12 @@ HARDEN="$HERE/../airbound/airbound/vps_harden.sh"  # shared with the personal re
 case "$(uname -m)" in
   x86_64 | amd64)
     ARCH=amd64
-    FRP_SHA=1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803
+    FRP_SHA=5b054d744c4661bb87eae2eae2a88b2a930fb1fece50e4324c9f2ab9439e357f
     CADDY_SHA=a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
     ;;
   aarch64 | arm64)
     ARCH=arm64
-    FRP_SHA=8edf590b0c396fa42f9c147121a76af83cfc2002b08f5aef0ea1008c43482019
+    FRP_SHA=74fd646005fe79be5033d91a92ffb3e0694dd1497f9170eaeafcf7bcbc4a1790
     CADDY_SHA=3db36ba90c7a6e8dda40ee3dd71fa08844c76b5fb08f61b31e5e78d2ed38e71c51dc7baed875e50d1ca1279196e84302967237386ae87c91ae9f2aaceada682e
     ;;
   *) fail "unsupported processor: $(uname -m)" ;;
@@ -46,14 +48,16 @@ apt-get install -y -qq python3-venv openssl curl ca-certificates nftables >/dev/
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-if [ "$(/usr/local/bin/airbound-hub --version 2>/dev/null || true)" != "$FRP_VERSION" ]; then
-  echo "Downloading frp $FRP_VERSION..."
+# The build marker also catches a rebuild of the same frp version.
+if [ "$(cat /usr/local/lib/airbound-frp-build 2>/dev/null || true)" != "$FRP_RELEASE" ]; then
+  echo "Downloading frp $FRP_VERSION ($FRP_RELEASE)..."
   NAME="frp_${FRP_VERSION}_linux_${ARCH}"
-  curl -fsSL -o "$TMP/frp.tgz" "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/${NAME}.tar.gz"
+  curl -fsSL -o "$TMP/frp.tgz" "https://github.com/oleost/HA-AirBound/releases/download/${FRP_RELEASE}/${NAME}.tar.gz"
   echo "$FRP_SHA  $TMP/frp.tgz" | sha256sum -c - >/dev/null || fail "frp didn't match its checksum."
   tar -xzf "$TMP/frp.tgz" -C "$TMP"
   install -m 0755 "$TMP/$NAME/frps" /usr/local/bin/airbound-hub
   install -m 0755 "$TMP/$NAME/frpc" /usr/local/bin/airbound-site
+  mkdir -p /usr/local/lib && echo "$FRP_RELEASE" > /usr/local/lib/airbound-frp-build
 fi
 
 if ! /usr/local/bin/airbound-web version 2>/dev/null | grep -q "^v$CADDY_VERSION "; then

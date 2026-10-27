@@ -12,12 +12,14 @@ FROM crowdsecurity/crowdsec:v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880
 FROM python:3.13.18-alpine3.24@sha256:bbc0290146ebe0a8b9a8ed07d3f2c7bdeb4d917fc93300a4e47490c8b5a11b48 AS frpc
 ARG BUILD_ARCH=amd64
 ARG FRP_VERSION=0.71.1
+# frp built from source with the newest Go by .github/workflows/frp.yaml
+ARG FRP_RELEASE=frp-v0.71.1-airbound1
 RUN case "$BUILD_ARCH" in \
-      amd64) ARCH=amd64; SHA=1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803 ;; \
-      aarch64) ARCH=arm64; SHA=8edf590b0c396fa42f9c147121a76af83cfc2002b08f5aef0ea1008c43482019 ;; \
+      amd64) ARCH=amd64; SHA=5b054d744c4661bb87eae2eae2a88b2a930fb1fece50e4324c9f2ab9439e357f ;; \
+      aarch64) ARCH=arm64; SHA=74fd646005fe79be5033d91a92ffb3e0694dd1497f9170eaeafcf7bcbc4a1790 ;; \
       *) echo "unsupported arch $BUILD_ARCH" && exit 1 ;; \
     esac \
-    && wget -q -O /tmp/frp.tgz "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${ARCH}.tar.gz" \
+    && wget -q -O /tmp/frp.tgz "https://github.com/oleost/HA-AirBound/releases/download/${FRP_RELEASE}/frp_${FRP_VERSION}_linux_${ARCH}.tar.gz" \
     && echo "$SHA  /tmp/frp.tgz" | sha256sum -c - \
     && tar -xzf /tmp/frp.tgz -C /tmp \
     && mv /tmp/frp_${FRP_VERSION}_linux_${ARCH}/frpc /usr/local/bin/frpc

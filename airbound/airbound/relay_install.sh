@@ -7,6 +7,7 @@ TOKEN="__TOKEN__"
 CONTROL_PORT="__CONTROL_PORT__"
 PUBLIC_PORT="__PUBLIC_PORT__"
 VERSION="0.71.1"
+RELEASE="frp-v0.71.1-airbound1"  # frp built from source with the newest Go by AirBound's GitHub Actions
 
 fail() { echo "AirBound relay: $1" >&2; exit 1; }
 
@@ -15,8 +16,8 @@ command -v systemctl >/dev/null 2>&1 || fail "this server needs systemd (Debian 
 command -v curl >/dev/null 2>&1 || fail "curl is missing. Install it with: apt install -y curl"
 
 case "$(uname -m)" in
-  x86_64 | amd64) ARCH=amd64; SHA=1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803 ;;
-  aarch64 | arm64) ARCH=arm64; SHA=8edf590b0c396fa42f9c147121a76af83cfc2002b08f5aef0ea1008c43482019 ;;
+  x86_64 | amd64) ARCH=amd64; SHA=5b054d744c4661bb87eae2eae2a88b2a930fb1fece50e4324c9f2ab9439e357f ;;
+  aarch64 | arm64) ARCH=arm64; SHA=74fd646005fe79be5033d91a92ffb3e0694dd1497f9170eaeafcf7bcbc4a1790 ;;
   *) fail "unsupported processor: $(uname -m)" ;;
 esac
 
@@ -24,7 +25,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 NAME="frp_${VERSION}_linux_${ARCH}"
 echo "Downloading the relay (frp $VERSION)..."
-curl -fsSL -o "$TMP/frp.tgz" "https://github.com/fatedier/frp/releases/download/v${VERSION}/${NAME}.tar.gz"
+curl -fsSL -o "$TMP/frp.tgz" "https://github.com/oleost/HA-AirBound/releases/download/${RELEASE}/${NAME}.tar.gz"
 echo "$SHA  $TMP/frp.tgz" | sha256sum -c - >/dev/null || fail "the download didn't match its checksum."
 tar -xzf "$TMP/frp.tgz" -C "$TMP"
 install -m 0755 "$TMP/$NAME/frps" /usr/local/bin/airbound-relay

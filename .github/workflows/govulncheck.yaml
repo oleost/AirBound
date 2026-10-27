@@ -5,7 +5,7 @@
 # reports vulnerable functions the program really contains. That decides
 # whether a prebuilt binary is fine to keep or worth rebuilding ourselves.
 #
-# Checks the official frp release (frps runs on the relays, facing the
+# Checks AirBound's own frp build (frps runs on the relays, facing the
 # internet) and the binaries inside the published add-on image.
 name: Reachable Go vulnerabilities
 
@@ -19,7 +19,8 @@ permissions:
 
 env:
   FRP_VERSION: "0.71.1"
-  FRP_SHA256: "1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803"  # linux_amd64
+  FRP_RELEASE: "frp-v0.71.1-airbound1"  # our own build, what the relays run
+  FRP_SHA256: "5b054d744c4661bb87eae2eae2a88b2a930fb1fece50e4324c9f2ab9439e357f"  # linux_amd64
 
 jobs:
   govulncheck:
@@ -36,7 +37,7 @@ jobs:
         run: |
           set -eu
           mkdir -p bin
-          curl -fsSL -o frp.tgz "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o frp.tgz "https://github.com/${{ github.repository }}/releases/download/${FRP_RELEASE}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
           echo "${FRP_SHA256}  frp.tgz" | sha256sum -c -
           tar -xzf frp.tgz
           cp "frp_${FRP_VERSION}_linux_amd64/frps" bin/frps
@@ -51,7 +52,7 @@ jobs:
         run: |
           {
             echo "## Reachable Go vulnerabilities"
-            echo "frp ${FRP_VERSION} (official release) and the binaries in \`${IMAGE}\`."
+            echo "frp ${FRP_VERSION} (${FRP_RELEASE}) and the binaries in \`${IMAGE}\`."
           } >> "$GITHUB_STEP_SUMMARY"
           for b in frps frpc caddy crowdsec cscli; do
             echo "::group::$b"
