@@ -17,7 +17,11 @@ WANTED: dict[str, Any] = {
     "use_x_forwarded_for": True,
     "trusted_proxies": ["172.30.33.0/24"],
     "ip_ban_enabled": True,
-    "login_attempts_threshold": 10,
+    # HA's bans are permanent and its counter only resets on a successful login or a
+    # restart. One Companion app with a login that no longer works makes about 6 refused
+    # requests at once (tested), so 10 could shut a whole household out. CrowdSec blocks
+    # password guessing first, and MFA makes a password alone useless.
+    "login_attempts_threshold": 50,
 }
 LABELS = {
     "use_x_forwarded_for": "Trust the address AirBound passes on",

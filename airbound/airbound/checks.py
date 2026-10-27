@@ -178,7 +178,7 @@ async def check_protection(crowdsec: CrowdSec) -> Check:
             "Attack protection",
             False,
             "CrowdSec isn't running, so addresses that attack aren't blocked automatically. "
-            "Home Assistant still blocks an address after 10 failed logins. Restart AirBound to try again.",
+            "Home Assistant still blocks an address after 50 failed logins. Restart AirBound to try again.",
         )
     bans = await crowdsec.bans()
     blocked = f"{len(bans)} address{'es' if len(bans) != 1 else ''} blocked right now." if bans else "Nothing blocked right now."

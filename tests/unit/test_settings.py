@@ -49,7 +49,7 @@ def test_ha_changes_in_plain_words():
     assert listed == {
         "Trust the address AirBound passes on": ("Not set", "Yes"),
         "Trusted proxy": ("Not set", "172.30.33.0/24"),
-        "Failed logins before blocking": ("Never", "10"),
+        "Failed logins before blocking": ("Never", "50"),
     }
 
 

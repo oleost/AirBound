@@ -525,7 +525,7 @@ steps.ha_settings = () => {
   return frame(
     "ha_settings",
     `<h1>Let Home Assistant see who is connecting</h1>
-    <p class="lead">AirBound sits in front of Home Assistant. With these settings Home Assistant sees each visitor's real address, so it can block an address after 10 failed logins.</p>
+    <p class="lead">AirBound sits in front of Home Assistant. With these settings Home Assistant sees each visitor's real address, so it can block an address after 50 failed logins. CrowdSec blocks attackers much sooner, for a few hours at a time.</p>
     ${body}`
   );
 };
