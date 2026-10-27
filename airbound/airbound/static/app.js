@@ -92,7 +92,6 @@ const enter = {
     poll(async () => {
       view.status = await api("status");
       view.bans = (await api("bans")).bans;
-      view.restarting = false;
       render();
     }, 15000),
 };
@@ -758,28 +757,25 @@ steps.overview = () => {
       view.bans?.length
         ? `<div class="card">
             <h2 style="margin-top:0">Blocked addresses</h2>
-            <p class="muted small">Blocked after repeated failed logins or attacks. CrowdSec's blocks end by themselves; Home Assistant's own blocks are permanent. Unblock an address only if you know it's yours, for example your mobile network after an app kept using an old login.</p>
-            ${view.restarting ? '<div class="notice info"><p><span class="spinner"></span> Home Assistant is restarting to lift the block. This takes about a minute.</p></div>' : ""}
+            <p class="muted small">Blocked after repeated failed logins or attacks. CrowdSec's blocks end by themselves; unblock one only if you know it's yours.</p>
             <div class="list">
               ${view.bans
                 .map((b) => {
                   const permanent = b.source === "homeassistant";
-                  const confirm =
-                    view.confirmUnban === b.ip
-                      ? `<div class="notice warn"><p>Home Assistant only reads its blocks when it starts, so lifting this one restarts Home Assistant (about a minute).</p>
-                         <div class="actions"><button class="primary" data-action="unban" data-ip="${esc(b.ip)}" data-source="homeassistant">Unblock and restart</button><button data-action="unban-cancel">Cancel</button></div></div>`
-                      : "";
                   const detail = permanent
                     ? `${esc(b.reason)} · permanent${b.banned_at ? ` · since ${esc(new Date(b.banned_at).toLocaleString())}` : ""}`
                     : `${esc(b.reason.replaceAll("-", " "))}${b.expires_in ? ` · ends in ${esc(b.expires_in)}` : ""}`;
-                  const button = permanent
-                    ? `<button class="link" data-action="unban-ask" data-ip="${esc(b.ip)}">Unblock</button>`
-                    : `<button class="link" data-action="unban" data-ip="${esc(b.ip)}">Unblock</button>`;
+                  const button = permanent ? "" : `<button class="link" data-action="unban" data-ip="${esc(b.ip)}">Unblock</button>`;
                   return `<div class="row"><div class="grow"><span class="mono">${esc(b.ip)}</span>
-                    <div class="muted small">${detail}</div>${confirm}</div>${view.confirmUnban === b.ip ? "" : button}</div>`;
+                    <div class="muted small">${detail}</div></div>${button}</div>`;
                 })
                 .join("")}
             </div>
+            ${
+              view.bans.some((b) => b.source === "homeassistant")
+                ? `<div class="notice info"><p><b>Home Assistant's own blocks are permanent.</b> If one is your own address, remove its two lines from <span class="mono">ip_bans.yaml</span> in the Home Assistant config folder (for example with the File editor add-on), then restart Home Assistant. AirBound doesn't do this for you, so it never needs write access to your configuration.</p></div>`
+                : ""
+            }
           </div>`
         : ""
     }
@@ -1018,18 +1014,7 @@ const actions = {
     render();
   },
   async unban(el) {
-    const answer = await api("bans/unban", { ip: el.dataset.ip, source: el.dataset.source || "crowdsec" });
-    view.confirmUnban = null;
-    view.restarting = Boolean(answer.restarting);
-    if (!answer.restarting) view.bans = answer.bans;
-    render();
-  },
-  "unban-ask"(el) {
-    view.confirmUnban = el.dataset.ip;
-    render();
-  },
-  "unban-cancel"() {
-    view.confirmUnban = null;
+    view.bans = (await api("bans/unban", { ip: el.dataset.ip })).bans;
     render();
   },
   "mfa-off-no"() {

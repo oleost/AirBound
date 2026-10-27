@@ -83,7 +83,7 @@ The first step asks how your phone should reach Home Assistant. You can change i
 - **Encrypted all the way home.** The certificate is made and kept by your own Home Assistant (Let's Encrypt). Relays and DNS providers only move encrypted traffic and can't read it.
 - **A hidden address.** A random name nobody can guess. On your own domain it's covered by a wildcard certificate, so the name never shows up in public certificate logs, and requests for any other name are dropped.
 - **Certificate watch.** AirBound searches the public Certificate Transparency logs and warns you if anyone else gets a certificate for your address. On your own domain a CAA record also forbids it outright.
-- **Attack protection.** CrowdSec watches the logs, blocks addresses that probe or guess passwords, and uses the community blocklist. Home Assistant's own login ban is turned on too, and both kinds of block can be lifted from the panel if it's ever your own address.
+- **Attack protection.** CrowdSec watches the logs, blocks addresses that probe or guess passwords, and uses the community blocklist. Home Assistant's own login ban is turned on too. CrowdSec's blocks can be lifted from the panel; Home Assistant's permanent ones are listed there with how to remove them.
 - **A locked-down relay server.** The one command that sets up your own server also turns on a firewall (only SSH and the relay's ports get in), SSH logins with keys only, and automatic security updates. The hosted relay runs the same setup.
 - **Status in Home Assistant.** Health checks in the panel, plus sensors, events and notifications, for example when someone logs in from a new address.
 

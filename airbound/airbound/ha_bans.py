@@ -1,14 +1,12 @@
 """Home Assistant's own IP bans: permanent, stored in ip_bans.yaml in the config folder.
 
-HA has no API to lift a ban. The documented way is to remove the address from
-ip_bans.yaml and restart Home Assistant, which is what the panel does. This is
-the only file AirBound writes in the config folder.
+AirBound only reads them, to show them in the panel. HA has no API to lift a
+ban, and AirBound deliberately has no write access to the config folder, so the
+panel explains HA's documented way: remove the line, then restart.
 """
 
 from __future__ import annotations
 
-import ipaddress
-import os
 from pathlib import Path
 
 from .users import HA_CONFIG
@@ -38,23 +36,3 @@ def read_bans(path: Path = BANS_FILE) -> list[dict]:
         elif bans and line.strip().startswith("banned_at:"):
             bans[-1]["banned_at"] = line.split(":", 1)[1].strip().strip("'\"")
     return bans
-
-
-def remove_ban(ip: str, path: Path = BANS_FILE) -> bool:
-    """Drop one address from the file; True if it was there. HA applies it after a restart."""
-    ipaddress.ip_address(ip)  # only ever a single, valid address
-    if not path.exists():
-        return False
-    kept, skipping, found = [], False, False
-    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
-        key = _key(line)
-        if key is not None:
-            skipping = key == ip
-            found = found or skipping
-        if not skipping:
-            kept.append(line)
-    if found:
-        tmp = path.with_name(path.name + ".airbound-tmp")
-        tmp.write_text("".join(kept), encoding="utf-8")
-        os.replace(tmp, path)
-    return found

@@ -421,20 +421,11 @@ class Panel:
         return web.json_response({"bans": blocks, "running": self._crowdsec.running})
 
     async def unban(self, request: web.Request) -> web.Response:
-        body = await request.json()
-        ip = (body.get("ip") or "").strip()
+        ip = ((await request.json()).get("ip") or "").strip()
         try:
             ipaddress.ip_address(ip)
         except ValueError:
             return web.json_response({"error": "That isn't an IP address."}, status=400)
-        if body.get("source") == "homeassistant":
-            # HA only reads ip_bans.yaml when it starts.
-            if ha_bans.remove_ban(ip):
-                try:
-                    await self._supervisor.ws({"type": "call_service", "domain": "homeassistant", "service": "restart"})
-                except Exception:  # the connection closes as Home Assistant goes down
-                    pass
-            return web.json_response({"bans": [], "restarting": True})
         await self._crowdsec.unban(ip)
         return await self.bans(request)
 
