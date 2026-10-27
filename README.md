@@ -141,6 +141,8 @@ The test environment, the test round, releases, and how every part is kept up to
 | Your own server (relay mode) | Working end to end with a real VPS (Hetzner, Debian 13) |
 | Direct through the router | Working; automatic port opening (UPnP/NAT-PMP) is unit-tested only |
 
+AirBound was built with the help of AI (Claude Opus 5.5). Every release goes through a full test round on Home Assistant OS VMs (stable and beta channel), the relay server is tested on a private VM before it is deployed, and the whole chain has been confirmed on a real VPS at Hetzner.
+
 AirBound is not affiliated with Home Assistant or Nabu Casa. If you can, consider supporting Home Assistant's development through [Home Assistant Link](https://www.nabucasa.com/), Nabu Casa's own remote access service, which funds the project.
 
 ## License
