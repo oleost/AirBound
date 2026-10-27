@@ -80,3 +80,13 @@ def test_limiting_the_last_person_to_home_shows_continue_right_away(server):
         page.get_by_role("button", name="Continue: Go live").wait_for(timeout=3000)
         assert page.get_by_role("button", name="Continue: Go live").is_enabled()
         browser.close()
+
+
+def test_index_versions_its_assets_so_updates_skip_the_cache():
+    import asyncio
+    from airbound.web import ASSET_VERSION, Panel
+
+    response = asyncio.run(Panel.index(None, None))
+    assert f'static/app.js?v={ASSET_VERSION}' in response.text
+    assert f'static/style.css?v={ASSET_VERSION}' in response.text
+    assert response.headers["Cache-Control"] == "no-store"

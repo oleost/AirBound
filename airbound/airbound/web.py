@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import io
 import ipaddress
 from pathlib import Path
@@ -22,6 +23,8 @@ from .supervisor import Supervisor
 
 INGRESS_PROXY = "172.30.32.2"
 STATIC = Path(__file__).parent / "static"
+# Changes whenever the script or stylesheet changes, so browsers fetch the new ones after an update.
+ASSET_VERSION = hashlib.sha256(b"".join((STATIC / name).read_bytes() for name in ("app.js", "style.css"))).hexdigest()[:12]
 
 
 @web.middleware
@@ -105,8 +108,12 @@ class Panel:
         r.add_post("/api/settings", self.update_settings)
         return app
 
-    async def index(self, _request: web.Request) -> web.FileResponse:
-        return web.FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
+    async def index(self, _request: web.Request) -> web.Response:
+        """The page, with the version on its script and stylesheet so an update is never hidden by the browser's cache."""
+        page = (STATIC / "index.html").read_text(encoding="utf-8")
+        for asset in ("static/app.js", "static/style.css"):
+            page = page.replace(f'"{asset}"', f'"{asset}?v={ASSET_VERSION}"')
+        return web.Response(text=page, content_type="text/html", headers={"Cache-Control": "no-store"})
 
     def _state(self, request: web.Request) -> dict:
         settings = self._store.settings
