@@ -95,7 +95,7 @@ def terms(config: Config) -> str:
 <h2>If the relay closes</h2>
 <p>If the hosted relay is ever shut down for good, the plan is to say so on Patreon and GitHub at least 30 days ahead when possible. The add-on keeps working with your own server or router.</p>
 <h2>Changes and contact</h2>
-<p>These terms can change; the date above shows the latest version, and bigger changes are posted on Patreon. Questions go to <a href="https://github.com/oleost/HA-AirBound/issues">GitHub issues</a>. See also the <a href="/privacy">privacy page</a>.</p></div>"""
+<p>These terms can change; the date above shows the latest version, and bigger changes are posted on Patreon. Questions go to <a href="https://github.com/oleost/HA-AirBound/issues">GitHub issues</a>. To report abuse of the relay, such as attacks or illegal content coming from its address, write to <a href="mailto:abuse@{escape(config.domain)}">abuse@{escape(config.domain)}</a>. See also the <a href="/privacy">privacy page</a>.</p></div>"""
 
 
 def confirm_code(claim_id: str, code: str, github: bool = False) -> str:

@@ -55,7 +55,7 @@ async def main() -> None:
         # Patreon cover / GitHub banner.
         tagline = (
             "<div style='font-size:34px;color:#e8f4fd;margin-top:14px'>"
-            "Secure remote access for Home Assistant. No VPN, no open ports.</div>"
+            "Secure remote access for Home Assistant</div>"
         )
         await shot(
             HERE / "banner.png",

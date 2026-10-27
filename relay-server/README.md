@@ -103,7 +103,8 @@ to your domain.
 `/terms` shows the terms for airbound.dev: a hobby project, the relay as a
 best-effort thank-you for Patreon supporters, with no warranty or liability. If you
 run a relay of your own, edit `terms()` in `controller/airbound_relay/pages.py` so
-it fits you.
+it fits you. The terms name `abuse@<your domain>` as the abuse contact, so set up
+that address (on Cloudflare, Email Routing can forward it to you for free).
 
 ## Privacy
 
