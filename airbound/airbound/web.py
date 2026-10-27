@@ -202,9 +202,28 @@ class Panel:
         self._store.update(hosted_claim=link["claim"], hosted_poll=link["poll"], hosted_code=link["code"])
         return await self.hosted_status(_request)
 
+    async def _restore_hosted_address(self) -> None:
+        """Back to the hosted relay after another mode: the device is still linked, so
+        its address comes back without a new Patreon login."""
+        try:
+            info = await hosted.account(self._session, self._store.settings.hosted_key)
+        except hosted.HostedError:
+            return
+        fqdn = info.get("fqdn") or ""
+        if info.get("state") not in ("active", "grace") or "." not in fqdn:
+            return
+        hostname, domain = fqdn.split(".", 1)
+        settings = self._store.settings
+        since = settings.hosted_since or datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        await self._caddy.stop()
+        self._store.update(domain=domain, hostname=hostname, tls="hosted", live=False, hosted_since=since)
+
     async def hosted_status(self, _request: web.Request) -> web.Response:
         """Where linking stands. Picks up the key once the person has logged in."""
         settings = self._store.settings
+        if not settings.hosted_claim and settings.hosted_key and settings.tls != "hosted":
+            await self._restore_hosted_address()
+            settings = self._store.settings
         result = {"linked": bool(settings.hosted_key and settings.tls == "hosted"), "fqdn": settings.fqdn if settings.tls == "hosted" else ""}
         if not settings.hosted_claim:
             return web.json_response({**result, "state": "linked" if result["linked"] else "idle"})

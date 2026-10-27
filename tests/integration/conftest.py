@@ -92,8 +92,9 @@ async def ensure_live(panel: Panel) -> None:
     s = state["settings"]
     if s["live"] and s["fqdn"] == FQDN and s["tls"] == "internal":
         return
-    if s["tls"] == "cloudflare" and s["has_token"] and not os.environ.get("AIRBOUND_TEST_TAKEOVER"):
-        pytest.skip("A real Cloudflare setup is in use on the test VM; set AIRBOUND_TEST_TAKEOVER=1 to replace it")
+    real = (s["tls"] == "cloudflare" and s["has_token"]) or s["tls"] == "hosted" or s.get("has_hosted_key")
+    if real and not os.environ.get("AIRBOUND_TEST_TAKEOVER"):
+        pytest.skip("A real setup (Cloudflare or the hosted relay) is in use on the test VM; set AIRBOUND_TEST_TAKEOVER=1 to replace it")
     hostname, domain = FQDN.split(".", 1)
     await panel.post("api/settings", {"tls": "internal", "domain": domain, "hostname": hostname})
     await panel.post("api/go-live")
