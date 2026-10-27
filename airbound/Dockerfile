@@ -3,7 +3,6 @@ FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.14.1 \
-    --replace github.com/crowdsecurity/crowdsec=github.com/crowdsecurity/crowdsec@v1.7.8 \
     --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
     --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@v5.4.0 \
     --output /usr/bin/caddy
