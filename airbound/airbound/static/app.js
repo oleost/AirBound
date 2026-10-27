@@ -537,7 +537,7 @@ steps.users = () => {
       const status = p.mfa
         ? '<span class="pill good">Two-step login on</span>'
         : p.local_only
-          ? '<span class="pill muted">Home network only</span>'
+          ? `<span class="pill muted">Home network only</span>${p.auto_limited ? '<div class="muted small">Limited by AirBound until two-step login is on; it lets them out again by itself.</div>' : ""}`
           : '<span class="pill warn">Needs two-step login</span>';
       let action = "";
       if (!p.mfa && !p.local_only && p.you) {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .settings import Store
 from .supervisor import Supervisor
 
 HA_CONFIG = Path("/homeassistant")
@@ -50,3 +51,36 @@ async def list_people(supervisor: Supervisor, current_user_id: str | None) -> li
 
 async def set_local_only(supervisor: Supervisor, user_id: str, local_only: bool) -> None:
     await supervisor.ws({"type": "config/auth/update", "user_id": user_id, "local_only": local_only})
+
+
+def mfa_plan(people: list[dict], limited: set[str], enforce: bool) -> tuple[list[dict], list[dict]]:
+    """(limit, release): whom AirBound limits to the home network now, and whom it lets out again.
+
+    The login guard stops new logins without MFA from outside, but an app that
+    logged in at home keeps a token that works from anywhere. Home Assistant's
+    own "local only" flag is checked on every request, so it stops those too.
+    AirBound only ever releases the people it limited itself.
+    """
+    if not enforce:
+        return [], [p for p in people if p["id"] in limited and p["local_only"]]
+    limit = [p for p in people if not p["mfa"] and not p["local_only"]]
+    release = [p for p in people if p["id"] in limited and p["mfa"] and p["local_only"]]
+    return limit, release
+
+
+async def enforce_mfa(supervisor: Supervisor, store: Store) -> tuple[list[str], list[str]]:
+    """Applies mfa_plan; returns the names of the people limited and released just now."""
+    settings = store.settings
+    people = await list_people(supervisor, None)
+    limited = set(settings.auto_limited)
+    limit, release = mfa_plan(people, limited, settings.live and settings.require_mfa)
+    for person in limit:
+        await set_local_only(supervisor, person["id"], True)
+        limited.add(person["id"])
+    for person in release:
+        await set_local_only(supervisor, person["id"], False)
+        limited.discard(person["id"])
+    limited &= {p["id"] for p in people if p["local_only"] or p in limit}  # forget deleted users and manual changes
+    if limited != set(settings.auto_limited):
+        store.update(auto_limited=tuple(sorted(limited)))
+    return [p["name"] for p in limit], [p["name"] for p in release]

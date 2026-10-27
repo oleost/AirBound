@@ -45,3 +45,49 @@ def test_blocking():
         current_user_id=None,
     )
     assert blocking(people) == ["ola"]
+
+
+def person(id_, mfa=False, local_only=False):
+    return {"id": id_, "name": id_.title(), "mfa": mfa, "local_only": local_only, "owner": False, "you": False}
+
+
+def test_mfa_plan_limits_people_without_mfa_and_releases_only_its_own():
+    from airbound.users import mfa_plan
+
+    people = [person("sam"), person("alex", mfa=True), person("kim", local_only=True), person("lee", mfa=True, local_only=True)]
+    limit, release = mfa_plan(people, {"lee"}, enforce=True)
+    assert [p["id"] for p in limit] == ["sam"]
+    assert [p["id"] for p in release] == ["lee"]  # turned MFA on; kim was limited by hand and stays
+    limit, release = mfa_plan(people, {"kim"}, enforce=False)
+    assert limit == [] and [p["id"] for p in release] == ["kim"]
+
+
+async def test_enforce_mfa_limits_releases_and_remembers(tmp_path, monkeypatch):
+    from airbound import users
+    from airbound.settings import Store
+
+    people = [person("sam"), person("lee", mfa=True, local_only=True)]
+    calls = []
+
+    async def fake_list(_supervisor, _user):
+        return [dict(p) for p in people]
+
+    async def fake_set(_supervisor, user_id, local_only):
+        calls.append((user_id, local_only))
+
+    monkeypatch.setattr(users, "list_people", fake_list)
+    monkeypatch.setattr(users, "set_local_only", fake_set)
+    store = Store(tmp_path / "settings.json")
+    store.update(live=True, require_mfa=True, auto_limited=("lee",))
+
+    limited, released = await users.enforce_mfa(None, store)
+    assert (limited, released) == (["Sam"], ["Lee"])
+    assert calls == [("sam", True), ("lee", False)]
+    assert store.settings.auto_limited == ("sam",)
+
+    # Going offline lets AirBound's own limits go again.
+    people[0]["local_only"] = True
+    store.update(live=False)
+    calls.clear()
+    assert await users.enforce_mfa(None, store) == ([], ["Sam"])
+    assert calls == [("sam", False)] and store.settings.auto_limited == ()

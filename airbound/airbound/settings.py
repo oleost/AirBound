@@ -68,6 +68,7 @@ class Settings:
     hosted_poll: str = ""
     hosted_code: str = ""
     hosted_since: str = ""  # when this hostname was first linked (ISO 8601 UTC), for the certificate watch
+    auto_limited: tuple[str, ...] = ()  # users AirBound limited to the home network because they have no MFA
 
     @property
     def fqdn(self) -> str:

@@ -317,11 +317,24 @@ class Panel:
 
     async def users(self, request: web.Request) -> web.Response:
         people = await users.list_people(self._supervisor, user_id(request))
+        limited = set(self._store.settings.auto_limited)
+        for person in people:
+            person["auto_limited"] = person["id"] in limited
         return web.json_response({"users": people, "blocking": users.blocking(people)})
 
     async def users_local_only(self, request: web.Request) -> web.Response:
         local_only = bool((await request.json()).get("local_only"))
-        await users.set_local_only(self._supervisor, request.match_info["user_id"], local_only)
+        user = request.match_info["user_id"]
+        settings = self._store.settings
+        if not local_only and settings.live and settings.require_mfa:
+            person = next((p for p in await users.list_people(self._supervisor, None) if p["id"] == user), None)
+            if person and not person["mfa"]:
+                return web.json_response(
+                    {"error": f"{person['name']} needs two-step login before they can use Home Assistant from outside."}, status=400
+                )
+        await users.set_local_only(self._supervisor, user, local_only)
+        if not local_only and user in settings.auto_limited:
+            self._store.update(auto_limited=tuple(u for u in settings.auto_limited if u != user))
         return await self.users(request)
 
     async def go_live_progress(self, _request: web.Request) -> web.Response:

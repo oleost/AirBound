@@ -19,7 +19,7 @@ from pathlib import Path
 from aiohttp import ClientSession
 from cryptography import x509
 
-from . import checks, mqtt, network
+from . import checks, mqtt, network, users
 from .certwatch import CertWatch, own_public_keys
 from .crowdsec import CrowdSec
 from .relay import Frpc
@@ -237,6 +237,21 @@ class Reporter:
             self._save()
         return True
 
+    async def enforce_mfa(self) -> None:
+        """Limit people without MFA to the home network, so even an app that logged in at home stops working outside."""
+        limited, released = await users.enforce_mfa(self._supervisor, self._store)
+        if limited:
+            names = ", ".join(limited)
+            await self._notify(
+                "Limited to the home network",
+                f"{names} can't use Home Assistant from outside until they turn on two-step login: their profile → Security → "
+                "Multi-factor authentication. Apps that logged in at home stop working outside too. AirBound lets them out again "
+                "by itself once it's on.",
+                "mfa_limited",
+            )
+        if released and not self._store.settings.auto_limited:
+            await self._dismiss("mfa_limited")
+
     async def track_connections(self) -> None:
         """Update "Last remote connection" from Caddy's access log."""
         settings = self._store.settings
@@ -270,6 +285,10 @@ class Reporter:
                     last_status = now
                 except Exception:
                     _LOGGER.exception("Couldn't publish status to Home Assistant")
+            try:
+                await self.enforce_mfa()
+            except Exception:
+                _LOGGER.exception("Couldn't check two-step login for everyone")
             try:
                 await self.track_connections()
             except Exception:
