@@ -3,7 +3,7 @@
     python scripts/e2e.py            all scenarios (about 20 minutes)
     python scripts/e2e.py --skip own_relay
 
-Scenarios, in order: unit tests, deploy main to the test VM, the hosted relay
+Scenarios, in order: unit tests, deploy next to the test VM, the hosted relay
 end to end, the integration tests (including MFA enforcement), MFA-guard bypass
 probes from outside, and own-relay mode on a fresh test VPS. The test VM ends
 up back on the hosted relay, and the VPS is stopped. The result is written to

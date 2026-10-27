@@ -8,17 +8,18 @@ friends.
 ## How it works
 
 ```text
-phone â”€â”€TLSâ”€â”€â–¶ :443 hub (frps) â”€â”€routes by name (SNI), no decryptionâ”€â”€â–¶ tunnel â”€â”€â–¶ Home Assistant
-                     â”‚
-                     â””â”€â”€ asks the controller on every login, new proxy and heartbeat
+phone ──TLS──▶ :443 hub (frps) ──routes by name (SNI), no decryption──▶ tunnel ──▶ Home Assistant
+                     │
+                     └── asks the controller on every login, new proxy and heartbeat
 ```
 
 | Service | What it does |
 | --- | --- |
-| `airbound-hub` | [frp](https://github.com/fatedier/frp)'s server. Port 443 routes each connection by the name in the TLS handshake to that member's Home Assistant; port 7000 takes the tunnels, over TLS pinned to the hub's own CA. |
+| `airbound-hub` | [frp](https://github.com/fatedier/frp)'s server, built from source with the newest Go by this repository's CI (see MAINTENANCE.md). Port 443 routes each connection by the name in the TLS handshake to that member's Home Assistant; port 7000 takes the tunnels, over TLS pinned to the hub's own CA. |
 | `airbound-controller` | The hub's server plugin and the website's API. A tunnel may log in only with a valid device key and an active membership, may only publish its own hostname, gets a server-side bandwidth limit, and is dropped at the next heartbeat once the membership has lapsed (after a grace period). It also handles linking with Patreon and keeps the member list in sync (webhook plus an hourly check). |
 | `airbound-web` | Caddy, serving the website on the domain itself. It gets its certificate the same way members do: through the hub (TLS-ALPN). |
 | `airbound-site` | A local tunnel that publishes the website through the hub. |
+| `GET /api/v1/ops` | The relay's health (updates, pending restart, disk, versions, certificate) for the weekly maintenance report; needs `OPS_TOKEN` from `controller.env`. |
 
 Each Home Assistant gets its certificate from Let's Encrypt through the hub, so
 the private key never leaves the home and the relay can't decrypt anything.
@@ -57,7 +58,7 @@ Cloudflare, and a Patreon creator page with a tier for the relay.
 4. **Run the installer** from this directory: `sudo sh install.sh`. The first run creates `/etc/airbound-controller/controller.env`; fill in `DOMAIN`, `CAMPAIGN_ID` and `RELAY_TIER_ID` (shown by the Patreon API), then run it again.
 5. **Point the domain at the server:** `cd /opt/airbound-controller && sudo -u airbound-controller venv/bin/python -m airbound_relay dns`.
 
-Running the installer again updates everything and keeps the settings, the database and the hub's certificate.
+Running the installer again updates everything and keeps the settings, the database and the hub's certificate. To update a live relay safely, with a backup and automatic rollback, use `scripts/relay_deploy.py` as described in [MAINTENANCE.md](../MAINTENANCE.md).
 
 The add-on pins the hub's CA (`airbound/airbound/hosted_relay_ca.pem`). A relay of
 your own has its own CA, at `https://<your domain>/relay-ca.pem`; build the add-on

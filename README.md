@@ -99,7 +99,7 @@ New supporters get a 7-day free trial, and Patreon shows the price in your own c
 **What the relay can and can't see**
 
 - It routes each connection by the address name and passes it on **without decrypting it**. It never sees passwords, pages or camera images.
-- It sees which addresses connect, when, and how much data passes. Connection logs are kept for at most 14 days, and monthly data totals for three months (fair use: up to 4 MB/s, and slower for the rest of the month past 300 GB).
+- It sees which addresses connect, when, and how much data passes. How long it keeps what is on the [privacy page](https://airbound.dev/privacy), and the fair-use limits are in the [terms](https://airbound.dev/terms).
 - It stores your Patreon member id and whether your membership includes the relay, not your name, email address or card. See the [privacy page](https://airbound.dev/privacy).
 
 **Being honest about trust.** Whoever runs a domain can, in principle, get a certificate for any name under it. That includes the operator of airbound.dev. It can't be done quietly, though: every certificate is public, and AirBound warns you if one appears for your address that your Home Assistant didn't make. If you'd rather not depend on that, use your own domain with your own server or your router. The add-on works the same way.
@@ -114,23 +114,15 @@ New supporters get a 7-day free trial, and Patreon shows the price in your own c
 
 ## Development
 
-The add-on lives in [`airbound/`](airbound), the hosted relay in [`relay-server/`](relay-server). Unit tests run anywhere:
+The add-on lives in [`airbound/`](airbound), the hosted relay in [`relay-server/`](relay-server). Work happens on the `next` branch; `main` holds the released versions that Home Assistant installs. Unit tests run anywhere:
 
 ```sh
 python -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests/unit tests/relay_server
+.venv/bin/python -m pytest tests/unit tests/relay_server tests/ui
 ```
 
-Integration and browser tests run against a Home Assistant OS test system. Put its address and a long-lived token in a `.env` file (never committed):
-
-```sh
-HA_URL=http://<test-vm>
-HA_WS=ws://<test-vm>/api/websocket
-HA_TOKEN=<long-lived access token>
-```
-
-Every push to `main` that changes the add-on runs the unit tests and builds the images for amd64 and aarch64 on GitHub Actions (`ghcr.io/oleost/{arch}-addon-airbound`), so Home Assistant downloads a ready image instead of building one. Then deploy with `python scripts/deploy.py` (it waits for the images and installs the pushed version on the test system) and run `python -m pytest tests/integration`. `python scripts/readme_screenshots.py` retakes the screenshots above, with the test system's address, names and IP addresses replaced by examples.
+The test environment, the test round, releases, and how every part is kept up to date are in [MAINTENANCE.md](MAINTENANCE.md). `python scripts/readme_screenshots.py` retakes the screenshots above, with real addresses and names replaced by examples.
 
 ## Status
 

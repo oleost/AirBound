@@ -40,16 +40,31 @@ def version() -> str:
     return re.search(r'^version: "([^"]+)"', (ROOT / "airbound/config.yaml").read_text(encoding="utf-8"), re.M).group(1)
 
 
+def tested_commit(kind: str, commit: str) -> tuple[str | None, str]:
+    """The commit whose result counts: this one, or an earlier one when only documentation changed since."""
+    if (RESULTS / f"{kind}-{commit[:12]}.json").exists():
+        return commit, ""
+    for path in sorted(RESULTS.glob(f"{kind}-*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        earlier = json.loads(path.read_text())["commit"]
+        if subprocess.run(["git", "merge-base", "--is-ancestor", earlier, commit], cwd=ROOT).returncode != 0:
+            continue
+        changed = run(["git", "diff", "--name-only", earlier, commit], quiet=True).split()
+        if all(f.endswith(".md") or f.startswith(("docs/", "assets/")) for f in changed):
+            return earlier, f" (from {earlier[:12]}; only documentation changed since)"
+    return None, ""
+
+
 def passed(kind: str, commit: str) -> tuple[bool, str]:
+    commit, note = tested_commit(kind, commit)
+    if commit is None:
+        return False, f"no {kind} result for this commit; run scripts/{kind.replace('-', '_')}.py"
     path = RESULTS / f"{kind}-{commit[:12]}.json"
-    if not path.exists():
-        return False, f"no {kind} result for {commit[:12]}; run scripts/{kind.replace('-', '_')}.py"
     results = json.loads(path.read_text())["results"]
     failed = [k for k, v in results.items() if v["ok"] is False]
     skipped = [k for k, v in results.items() if v["ok"] is None]
     if failed:
         return False, f"{kind} failed: {failed}"
-    return True, f"{kind} passed" + (f" (skipped: {skipped})" if skipped else "")
+    return True, f"{kind} passed{note}" + (f" (skipped: {skipped})" if skipped else "")
 
 
 def checks(accept_critical: str) -> tuple[list[str], list[str], bool]:

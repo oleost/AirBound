@@ -40,7 +40,7 @@ needs a decision under **Action needed**.
   - Update the test VM to the newest Home Assistant and run the test round.
   - Release through the normal path below.
 - **Within 48 hours:** a critical vulnerability that the internet can reach. That means frps on the relays, Caddy, Home Assistant's login path, or OpenSSL/Python in the add-on. Fix it, test it, release it.
-- **Release gate:** `scripts/release.py` refuses to promote a release when the last scan is older than 7 days, a scan failed, or a critical finding is open, unless the release is the fix for it.
+- **Release gate:** `scripts/release.py` refuses to promote a release when the last scan is older than 7 days, a scan failed, or a critical finding is open, unless the release is the fix for it. Test results count only for the exact commit they ran on; commits that change nothing but documentation (`*.md`, `docs/`, `assets/`) may reuse the last result.
 
 ## From change to users
 
@@ -57,7 +57,7 @@ commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulnch
 ```
 
 - **Branches:** `next` is development and testing. The test VM follows it (`https://github.com/oleost/HA-AirBound#next`). `main` is what users get: everyone who added the repository without a branch name follows it. Home Assistant keeps the branch it cloned, so `main` must stay the users' branch. A release fast-forwards `main` to a tested commit on `next`. The images for that version already exist, so users never see an update whose image is still building. Work happens on `next`, never directly on `main`.
-- **Test round** (`scripts/e2e.py`, about 20 minutes):
+- **Test round** (`scripts/e2e.py`, about 20 minutes; the test environment's private addresses go in `.env`, listed in `scripts/testenv.py`):
   - Deploys `next` to the test VM.
   - Checks the hosted relay end to end, and the MFA guard against 23 path spellings.
   - Runs MFA enforcement with a throwaway user.
