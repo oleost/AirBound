@@ -1,0 +1,72 @@
+# Which known Go vulnerabilities can the bundled programs actually reach?
+#
+# Trivy lists every vulnerability in the Go version a program was built with.
+# govulncheck looks at the symbols linked into each binary instead, so it only
+# reports vulnerable functions the program really contains. That decides
+# whether a prebuilt binary is fine to keep or worth rebuilding ourselves.
+#
+# Checks the official frp release (frps runs on the relays, facing the
+# internet) and the binaries inside the published add-on image.
+name: Reachable Go vulnerabilities
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 5 * * 1"  # Mondays, after the image scan
+
+permissions:
+  contents: read
+
+env:
+  FRP_VERSION: "0.71.1"
+  FRP_SHA256: "1d9875210972a5d1a62b2dc4c48df45ab0af05d3ca1b5e494a014428259df803"  # linux_amd64
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: Collect binaries
+        run: |
+          set -eu
+          mkdir -p bin
+          curl -fsSL -o frp.tgz "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
+          echo "${FRP_SHA256}  frp.tgz" | sha256sum -c -
+          tar -xzf frp.tgz
+          cp "frp_${FRP_VERSION}_linux_amd64/frps" bin/frps
+          version=$(sed -n 's/^version: "\(.*\)"$/\1/p' airbound/config.yaml)
+          image="ghcr.io/${{ github.repository_owner }}/amd64-addon-airbound:${version}"
+          docker pull -q "$image"
+          id=$(docker create "$image")
+          for b in caddy frpc crowdsec cscli; do docker cp "$id:/usr/local/bin/$b" "bin/$b"; done
+          docker rm "$id" >/dev/null
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+      - name: govulncheck (binary mode)
+        run: |
+          {
+            echo "## Reachable Go vulnerabilities"
+            echo "frp ${FRP_VERSION} (official release) and the binaries in \`${IMAGE}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          for b in frps frpc caddy crowdsec cscli; do
+            echo "::group::$b"
+            # Exit code 3 means vulnerabilities were found; that's a result, not a failure.
+            "$(go env GOPATH)/bin/govulncheck" -mode binary "bin/$b" > "report-$b.txt" 2>&1 || true
+            cat "report-$b.txt"
+            echo "::endgroup::"
+            {
+              echo "### $b"
+              echo '```'
+              grep -E "^(Vulnerability #|Your code is affected|No vulnerabilities|=== Symbol Results|    Found in:|    Fixed in:|  [A-Z])" "report-$b.txt" | head -80 || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: govulncheck-reports
+          path: report-*.txt
