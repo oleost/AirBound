@@ -227,6 +227,20 @@ PrivateDevices=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RemoveIPC=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+UMask=0077
 Restart=always
 RestartSec=5"
 
@@ -244,6 +258,7 @@ ReadWritePaths=/var/lib/airbound-controller
 MemoryMax=200M
 CPUQuota=50%
 TasksMax=64
+CapabilityBoundingSet=
 $HARDENING
 
 [Install]
@@ -284,6 +299,7 @@ ReadWritePaths=/var/lib/airbound-web
 MemoryMax=150M
 CPUQuota=30%
 TasksMax=128
+CapabilityBoundingSet=
 $HARDENING
 
 [Install]
@@ -301,6 +317,7 @@ ExecStart=/usr/local/bin/airbound-site -c $HUB/site.toml
 MemoryMax=64M
 CPUQuota=20%
 TasksMax=64
+CapabilityBoundingSet=
 $HARDENING
 
 [Install]
