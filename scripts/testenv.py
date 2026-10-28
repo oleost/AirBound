@@ -55,10 +55,47 @@ def head_commit() -> str:
     return run(["git", "rev-parse", "HEAD"], quiet=True).strip()
 
 
+def uncommitted() -> str:
+    """Changed or new files git would see (test-results/ and .env are ignored)."""
+    return run(["git", "status", "--porcelain"], quiet=True).strip()
+
+
+_run_commit = ""
+
+
+def begin_run() -> str:
+    """Start a run whose result belongs to one commit: the tested code is exactly that commit.
+
+    The test VMs install next from GitHub and the relay is packed from this
+    folder, so both must match the commit: nothing uncommitted, and pushed.
+    """
+    global _run_commit
+    if uncommitted():
+        raise SystemExit(f"Uncommitted changes; commit and push them first, so the result belongs to a commit:\n{uncommitted()}")
+    run(["git", "fetch", "-q", "origin"], quiet=True)
+    branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], quiet=True).strip()
+    if run(["git", "rev-parse", f"origin/{branch}"], check=False, quiet=True).strip() != head_commit():
+        raise SystemExit(f"HEAD isn't the same as origin/{branch}; push (or pull) first, since the test VMs install from GitHub.")
+    _run_commit = head_commit()
+    return _run_commit
+
+
 def save_result(kind: str, results: dict) -> Path:
+    """Saved under the commit the run started on. If HEAD or the files changed during the
+    run, the tested code is uncertain, so the result fails whatever the tests said."""
+    if not _run_commit:
+        raise RuntimeError("call begin_run() before the tests start")
+    moved = []
+    if head_commit() != _run_commit:
+        moved.append(f"HEAD moved to {head_commit()[:12]} during the run")
+    if uncommitted():
+        moved.append("files changed during the run")
+    if moved:
+        results = {**results, "provenance": {"ok": False, "detail": "; ".join(moved) + ". Run again without committing meanwhile."}}
+        print(f"✗ provenance: {results['provenance']['detail']}")
     RESULTS.mkdir(exist_ok=True)
-    path = RESULTS / f"{kind}-{head_commit()[:12]}.json"
-    path.write_text(json.dumps({"commit": head_commit(), "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "results": results}, indent=2))
+    path = RESULTS / f"{kind}-{_run_commit[:12]}.json"
+    path.write_text(json.dumps({"commit": _run_commit, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "results": results}, indent=2))
     return path
 
 

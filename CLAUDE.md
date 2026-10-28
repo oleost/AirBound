@@ -16,6 +16,8 @@ plus the relay server behind the hosted service at airbound.dev
 - **Claude runs everything.** The maintainer works only through Claude Code and never runs scripts by hand. Run the tests, the test round, staging and the release yourself, and when a step is due (a test round before a release, the beta check), run it or say it is due; never leave it as a step for the maintainer.
 - **Test it yourself** with the scripts below instead of handing manual testing to the maintainer.
 - **Test VMs stay stopped** except while a script uses them; the scripts stop them on exit.
+- **Pushes are gated.** `.githooks/pre-push` runs the unit, relay and browser tests and refuses the push if any fail (a clone enables it with `git config core.hooksPath .githooks`). Never bypass it with `--no-verify`, and judge test runs by their exit code, never by output piped through `tail`.
+- **A test result belongs to one commit.** `e2e.py`, `beta.py` and `relay_staging.py` refuse to start with uncommitted or unpushed changes, and a run during which HEAD or the files changed is saved as failed. Don't commit while one of them runs; commit, push, then start the run.
 
 ## Layout
 

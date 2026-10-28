@@ -24,7 +24,7 @@ import urllib.request
 import aiohttp
 from yarl import URL
 
-from testenv import ROOT, TestVPS, run, save_result
+from testenv import ROOT, TestVPS, begin_run, run, save_result
 
 from conftest import LOCAL_URL, create_user, ingress  # noqa: E402
 from ha import HA  # noqa: E402
@@ -201,6 +201,7 @@ SCENARIOS = [("unit", unit), ("deploy", deploy), ("hosted", hosted), ("integrati
 
 def main() -> None:
     skip = set(sys.argv[sys.argv.index("--skip") + 1:]) if "--skip" in sys.argv else set()
+    print(f"testing {begin_run()[:12]}")
     results, failed = {}, False
     for name, scenario in SCENARIOS:
         if name in skip:

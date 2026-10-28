@@ -1,0 +1,10 @@
+#!/bin/sh
+# Before every push: the same tests as CI plus the browser tests, so a broken
+# commit never reaches GitHub. Enabled per clone with: git config core.hooksPath .githooks
+cd "$(git rev-parse --show-toplevel)" || exit 1
+py=.venv/Scripts/python
+[ -x "$py" ] || py=.venv/bin/python
+if ! "$py" -m pytest -q tests/unit tests/relay_server tests/ui; then
+    echo "pre-push: tests failed, so nothing was pushed. Fix them and push again." >&2
+    exit 1
+fi

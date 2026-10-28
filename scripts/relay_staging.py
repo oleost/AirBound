@@ -18,7 +18,7 @@ import re
 import secrets
 import sys
 
-from testenv import ROOT, TestVPS, relay_tarball, save_result
+from testenv import ROOT, TestVPS, begin_run, relay_tarball, save_result
 
 UNITS = ("airbound-controller", "airbound-hub", "airbound-web", "airbound-site")
 MAX_EXPOSURE = 2.5  # systemd-analyze security; the units score about 1.7-1.9
@@ -75,6 +75,7 @@ def probe(vps: TestVPS, lines: list[str]) -> str:
 
 
 def main() -> None:
+    print(f"testing {begin_run()[:12]}")
     results: dict[str, dict] = {}
 
     def check(name: str, ok: bool, detail: str) -> None:

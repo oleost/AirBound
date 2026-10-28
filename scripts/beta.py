@@ -31,7 +31,7 @@ import urllib.request
 
 import aiohttp
 
-from testenv import ROOT, env, run, save_result, ssh
+from testenv import ROOT, begin_run, env, run, save_result, ssh
 
 # Everything that follows (ha.py, deploy.py, the integration tests) talks to the beta VM.
 os.environ["HA_TOKEN"] = env("BETA_HA_TOKEN")
@@ -206,6 +206,7 @@ async def ha_settings() -> str:
 
 
 def main() -> None:
+    print(f"testing {begin_run()[:12]}")
     results, failed = {}, False
     with BetaVM():
         for name, step in (("beta", to_beta), ("install", ensure_installed)):
