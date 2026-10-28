@@ -178,7 +178,7 @@ class Reporter:
             settings, self._supervisor, self._session, self._frpc, self._crowdsec, None, self._certwatch
         )
         problems = [c for c in results if not c.ok]
-        live = settings.live
+        live = settings.live and not settings.restored
         status = "Off" if not live else ("OK" if not problems else "Needs attention")
         await self._set("remote_access", "on" if live and not problems else "off", url=settings.url or None, mode=settings.mode or None)
         await self._set("status", status, problems=[f"{c.title}: {c.detail}" for c in problems])
@@ -189,7 +189,7 @@ class Reporter:
         await self._publish_counters()
 
         # Notify once when something turns red, and clear it when it's fixed.
-        titles = sorted(c.title for c in problems) if live else []
+        titles = sorted(c.title for c in problems) if live or settings.restored else []
         if titles != self._problems:
             if titles:
                 lines = "\n".join(f"- **{c.title}**: {c.detail}" for c in problems)

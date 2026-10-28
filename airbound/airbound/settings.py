@@ -83,6 +83,8 @@ class Settings:
     paused: bool = False  # the person turned remote access off; going live turns it on again
     removed: bool = False  # the person removed AirBound's changes; only uninstalling is left
     removed_notes: tuple[str, ...] = ()  # what the person still has to do by hand after removing
+    machine_known: bool = False  # this setup has a machine key (machine.py), so a restored backup can be told apart
+    restored: bool = False  # came back from a backup; remote access waits until the person confirms
 
     @property
     def fqdn(self) -> str:

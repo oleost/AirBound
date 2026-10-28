@@ -48,7 +48,7 @@ class GoLive:
         return {"busy": self.busy, "tasks": [asdict(t) for t in self.tasks]}
 
     def start(self) -> None:
-        if self.busy:
+        if self.busy or self._store.settings.restored:
             return
         settings = self._store.settings
         relay = settings.mode == "relay"
@@ -148,12 +148,19 @@ class GoLive:
         )
 
 
+async def start_saved(store: Store, caddy: Caddy, frpc: Frpc, ha_upstream: str) -> None:
+    """Remote access as it was set up, after a restart or a confirmed restore."""
+    await caddy.apply(store.settings, ha_upstream)
+    if store.settings.mode in ("relay", "hosted"):
+        await frpc.apply(store.settings)
+
+
 async def keep_dns_current(store: Store, session: ClientSession) -> None:
     """Built-in dynamic DNS: follow the home's public IP if the ISP changes it."""
     while True:
         await asyncio.sleep(DDNS_INTERVAL)
         settings = store.settings
-        if not (settings.live and settings.tls == "cloudflare") or settings.mode == "relay":
+        if not (settings.live and settings.tls == "cloudflare") or settings.mode == "relay" or settings.restored:
             continue  # in relay mode the record points to the relay, which doesn't move
         try:
             ip = await network.public_ip(session, fresh=True)
@@ -170,7 +177,7 @@ async def keep_port_open(store: Store, session: ClientSession, supervisor) -> No
     while True:
         await asyncio.sleep(PORTMAP_INTERVAL)
         settings = store.settings
-        if not (settings.port_mapping and settings.mode == "direct" and settings.live):
+        if not (settings.port_mapping and settings.mode == "direct" and settings.live) or settings.restored:
             continue
         try:
             gateway = await portmap.gateway_of(supervisor)

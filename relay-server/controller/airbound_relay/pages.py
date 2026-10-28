@@ -65,7 +65,7 @@ def privacy(config: Config) -> str:
     return f"""<div class="card"><h1>Privacy</h1>
 <p>The hosted relay keeps as little as possible:</p><ul>
 <li>{account} Not your name or email address.</li>
-<li><b>For each linked Home Assistant:</b> its random address on {escape(config.domain)}, a hash of its key, when it was last connected, and how much data it used each month (for the fair-use limit, kept for three months).</li>
+<li><b>For each linked Home Assistant:</b> its random address on {escape(config.domain)}, a hash of its key and of a random key for the machine it runs on, when it was last connected, and how much data it used each month (for the fair-use limit, kept for three months).</li>
 <li><b>Connection logs</b> (address and time) are kept for at most 14 days to stop abuse.</li>
 </ul>
 <p>Traffic to your Home Assistant is end-to-end encrypted. The relay can't read it, and nothing about it is stored.</p>

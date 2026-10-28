@@ -1,7 +1,8 @@
 """frps server plugin: every login, new proxy and heartbeat is checked here.
 
-A Home Assistant's frpc sends its device key as metadata. It may only log in
-while its membership gives access, may only publish an HTTPS proxy for its own
+A Home Assistant's frpc sends its device key and its machine as metadata. It
+may only log in from the machine that claimed the key (db.on_machine), while
+its membership gives access, may only publish an HTTPS proxy for its own
 hostname, and is disconnected at the next heartbeat once access ends. The
 bandwidth limit is set here, so a client can't raise its own; when it should
 change (fair use, see limits.py), the next heartbeat makes the tunnel reconnect.
@@ -44,6 +45,8 @@ class Plugin:
         device = self._db.device_by_key(key) if key else None
         if device is None or device.id != user:
             return None, "unknown device: link this Home Assistant again in AirBound"
+        if not self._db.on_machine(device, (metas or {}).get("machine", ""), now):
+            return None, "other machine: this key belongs to another Home Assistant; link this one again in AirBound"
         account = self._db.account(device.patreon_id)
         if access.state(account, device.patreon_id, self._config.free_users, self._config.grace_days, now) == access.EXPIRED:
             return None, "membership ended: renew it on Patreon to use the hosted relay"

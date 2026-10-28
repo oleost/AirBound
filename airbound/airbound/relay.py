@@ -32,7 +32,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-from . import hosted
+from . import hosted, machine
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -129,9 +129,9 @@ def install_command(settings: Settings, pki: dict[str, str]) -> str:
     return f"echo {encoded} | base64 -d | gunzip | $(command -v sudo) sh"
 
 
-def render_frpc(settings: Settings) -> str:
+def render_frpc(settings: Settings, machine_key: str = "") -> str:
     if settings.mode == "hosted":
-        return render_hosted_frpc(settings)
+        return render_hosted_frpc(settings, machine_key)
     host, port = RELAY_LISTENER.split(":")
     admin_host, admin_port = ADMIN.split(":")
     return f"""serverAddr = "{settings.relay_host}"
@@ -157,11 +157,12 @@ transport.proxyProtocolVersion = "v2"
 """
 
 
-def render_hosted_frpc(settings: Settings) -> str:
+def render_hosted_frpc(settings: Settings, machine_key: str) -> str:
     """The shared relay routes by name: an HTTPS proxy for this Home Assistant's own hostname.
 
     The device id and key identify this Home Assistant to the relay's controller,
-    which only lets it publish its own hostname.
+    which only lets it publish its own hostname, and only from the machine that
+    first used the key.
     """
     host, port = RELAY_LISTENER.split(":")
     admin_host, admin_port = ADMIN.split(":")
@@ -169,6 +170,7 @@ def render_hosted_frpc(settings: Settings) -> str:
 serverPort = {hosted.RELAY_PORT}
 user = "{settings.hosted_device}"
 metadatas.key = "{settings.hosted_key}"
+metadatas.machine = "{machine_key}"
 auth.method = "token"
 auth.token = "{hosted.AUTH_TOKEN}"
 transport.tls.enable = true
@@ -215,7 +217,7 @@ class Frpc:
     async def apply(self, settings: Settings) -> None:
         await self.stop()
         ensure_pki()
-        FRPC_CONFIG.write_text(render_frpc(settings))
+        FRPC_CONFIG.write_text(render_frpc(settings, machine.key()))
         os.chmod(FRPC_CONFIG, 0o600)
         self._process = await asyncio.create_subprocess_exec("frpc", "-c", str(FRPC_CONFIG))
         _LOGGER.info("Relay client started for %s", hosted.RELAY_HOST if settings.mode == "hosted" else settings.relay_host)
@@ -249,6 +251,11 @@ def explain(error: str) -> str:
     lowered = error.lower()
     if "membership ended" in lowered:
         return "Your AirBound membership has ended. Renew it on Patreon to use the hosted relay again."
+    if "other machine" in lowered:
+        return (
+            "airbound.dev only accepts the Home Assistant this key was made for. "
+            "Link again with Patreon in the first steps to move your address here."
+        )
     if "unknown device" in lowered:
         return "The hosted relay doesn't know this Home Assistant any more. Link it again in the first steps."
     if "token" in lowered or "authorization" in lowered:

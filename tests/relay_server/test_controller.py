@@ -331,3 +331,81 @@ async def test_a_home_assistant_can_unlink_itself_with_its_key(tmp_path):
     assert (await unlink(key)).status == 404  # already gone
     again, _ = db.link_device("u1", INSTALL, CONFIG.max_devices)
     assert again.hostname != device.hostname  # a fresh start gets a new address
+
+
+def test_a_key_belongs_to_the_first_machine_that_uses_it(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    plugin = Plugin(CONFIG, db)
+
+    def login(machine):
+        return plugin.handle("Login", {"user": device.id, "metas": {"key": key, "machine": machine}}, now=500)
+
+    assert login("home")["reject"] is False
+    assert login("home")["reject"] is False
+    refused = login("copy")  # the same key from a restored backup elsewhere
+    assert refused["reject"] is True and "other machine" in refused["reject_reason"]
+    assert db.device_by_key(key).foreign_seen == 500
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key}})["reject"] is True  # no machine at all
+    ping = {"user": {"user": device.id, "metas": {"key": key, "machine": "copy"}}}
+    assert plugin.handle("Ping", ping)["reject"] is True
+
+
+def test_relinking_lets_the_new_machine_claim_the_key(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    plugin = Plugin(CONFIG, db)
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key, "machine": "old"}})["reject"] is False
+    again, new_key = db.link_device("u1", INSTALL, CONFIG.max_devices)  # a Patreon login on the new machine
+    assert again.hostname == device.hostname
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key, "machine": "old"}})["reject"] is True  # old key gone
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": new_key, "machine": "new"}})["reject"] is False
+    assert db.device_by_key(new_key).foreign_seen is None
+
+
+def test_an_add_on_without_machines_works_until_one_claims_the_key(tmp_path):
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    plugin = Plugin(CONFIG, db)
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key}})["reject"] is False
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key, "machine": "home"}})["reject"] is False
+    assert plugin.handle("Login", {"user": device.id, "metas": {"key": key}})["reject"] is True
+
+
+def test_older_databases_get_the_machine_columns(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        "CREATE TABLE devices (id TEXT PRIMARY KEY, patreon_id TEXT NOT NULL, install_id TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE,"
+        " hostname TEXT NOT NULL UNIQUE, created REAL NOT NULL, last_seen REAL, revoked INTEGER NOT NULL DEFAULT 0);"
+        "INSERT INTO devices VALUES ('d1', 'u1', 'i', 'h', 'otter-comet-maple', 1, NULL, 0);"
+    )
+    old.close()
+    device = Database(path).device("d1")
+    assert device.hostname == "otter-comet-maple" and device.machine_hash is None and device.foreign_seen is None
+
+
+async def test_status_and_unlink_only_from_the_machine_that_uses_the_key(tmp_path):
+    from aiohttp.test_utils import make_mocked_request
+
+    from airbound_relay.web import Web
+
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    web_app = Web(CONFIG, db, None, lambda: None)
+
+    def request(method, machine):
+        headers = {"Authorization": f"Bearer {key}", "X-AirBound-Machine": machine}
+        return make_mocked_request(method, "/api/v1/device", headers=headers)
+
+    assert (await web_app.device_status(request("GET", "home"))).status == 200
+    assert (await web_app.device_status(request("GET", "copy"))).status == 409
+    assert (await web_app.device_unlink(request("DELETE", "copy"))).status == 409
+    assert db.device_by_key(key).id == device.id  # a copied backup can't take the address away
+    status = await web_app.device_status(request("GET", "home"))
+    import json
+
+    assert json.loads(status.body)["foreign_seen"]  # the owner's AirBound can warn about the copy
+    assert (await web_app.device_unlink(request("DELETE", "home"))).status == 200

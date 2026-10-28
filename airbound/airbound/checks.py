@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from . import ha_bans, hosted, network, relay, users
+from . import ha_bans, hosted, machine, network, relay, users
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
@@ -243,10 +243,32 @@ async def check_membership(settings: Settings, session: ClientSession) -> Check 
     """The hosted relay works while the Patreon membership is active."""
     title = "Membership"
     try:
-        info = await hosted.account(session, settings.hosted_key)
+        info = await hosted.account(session, settings.hosted_key, machine.key())
     except hosted.HostedError:
         return None  # the website being unreachable says nothing about the membership
     state = info.get("state")
+    if state in ("active", "grace") and info.get("foreign_seen"):
+        when = datetime.datetime.fromtimestamp(info["foreign_seen"], datetime.UTC)
+        return Check(
+            "membership",
+            "airbound.dev key",
+            False,
+            f"Another Home Assistant tried to use this one's airbound.dev key on {when:%d %B at %H:%M} UTC, and airbound.dev refused it. "
+            "That happens when a backup of this Home Assistant is restored somewhere else. If you didn't do that, the backup may have "
+            "got out: link again with Patreon to get a new key, and the old one stops working.",
+            "Link again",
+            "hosted",
+        )
+    if state == "other_machine":
+        return Check(
+            "membership",
+            title,
+            False,
+            "airbound.dev only accepts the Home Assistant this key was made for, and this isn't it. "
+            "Link again with Patreon to move your address here.",
+            "Link again",
+            "hosted",
+        )
     if state == "active":
         return Check("membership", title, True, "Your AirBound membership is active.")
     if state == "grace":
@@ -294,7 +316,16 @@ async def run_all(
         check_http(http.get("stable") or {}),
         check_password_login(offered),
     ]
-    if settings.live:
+    if settings.restored:
+        results.append(
+            Check(
+                "restored",
+                "Restored from a backup",
+                False,
+                "Remote access is off until you confirm in the AirBound panel that this Home Assistant is where AirBound belongs now.",
+            )
+        )
+    elif settings.live:
         pending = []
         if crowdsec:
             pending.append(check_protection(crowdsec))

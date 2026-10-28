@@ -12,12 +12,12 @@ from pathlib import Path
 import segno
 from aiohttp import ClientSession, web
 
-from . import checks, ha_bans, ha_settings, hosted, network, portmap, relay, steps, users
+from . import checks, ha_bans, ha_settings, hosted, machine, network, portmap, relay, steps, users
 from .caddy import Caddy
 from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
-from .golive import GoLive
+from .golive import GoLive, start_saved
 from .guard import AuthGuard
 from .remove import Removal
 from .settings import ALL_STEPS, COMMON_HOSTNAMES, Store, random_hostname, valid_hostname
@@ -129,6 +129,7 @@ class Panel:
         r.add_get("/api/remove", self.remove_progress)
         r.add_post("/api/remove", self.remove_start)
         r.add_post("/api/set-up-again", self.set_up_again)
+        r.add_post("/api/restored", self.restored_confirm)
         return app
 
     async def index(self, _request: web.Request) -> web.Response:
@@ -241,7 +242,7 @@ class Panel:
         """Back to the hosted relay after another mode: the device is still linked, so
         its address comes back without a new Patreon login."""
         try:
-            info = await hosted.account(self._session, self._store.settings.hosted_key)
+            info = await hosted.account(self._session, self._store.settings.hosted_key, machine.key())
         except hosted.HostedError:
             return
         fqdn = info.get("fqdn") or ""
@@ -382,6 +383,8 @@ class Panel:
         return web.json_response({**self._golive.progress(), "live": self._store.settings.live})
 
     async def go_live_start(self, _request: web.Request) -> web.Response:
+        if self._store.settings.restored:
+            raise web.HTTPConflict()  # confirmed on the restored page first
         self._golive.start()
         return await self.go_live_progress(_request)
 
@@ -502,6 +505,42 @@ class Panel:
             raise web.HTTPConflict()
         await self._removal.start()
         return await self.remove_progress(request)
+
+    async def restored_confirm(self, request: web.Request) -> web.Response:
+        """The person confirmed that AirBound, restored from a backup, belongs on this Home Assistant now.
+
+        Direct: the router may forward to the old machine, so that step is checked
+        again. Hosted: airbound.dev won't accept this machine with the old key, and
+        linking again with Patreon keeps the address. Then remote access starts as
+        it was.
+        """
+        settings = self._store.settings
+        if not settings.restored:
+            return web.json_response(await self._steps(request))
+        changes: dict = {"restored": False}
+        if settings.mode == "direct" and not settings.port_mapping:
+            changes["router_done"] = False
+        if settings.mode == "hosted" and settings.hosted_key:
+            changes.update(live=False, hosted_key="", hosted_device="", hosted_claim="", hosted_poll="", hosted_code="")
+        self._store.update(**changes)
+        settings = self._store.settings
+        if settings.live and settings.is_configured:
+            await start_saved(self._store, self._caddy, self._frpc, self._ha_upstream)
+            if settings.mode == "direct" and settings.port_mapping:
+                await self._reopen_port()
+        return web.json_response(await self._steps(request))
+
+    async def _reopen_port(self) -> None:
+        """Ask the router to forward the port to this machine, as AirBound did for the old one."""
+        gateway = await portmap.gateway_of(self._supervisor)
+        ha_ip = await network.ha_ip(self._supervisor)
+        if not (gateway and ha_ip):
+            self._store.update(port_mapping="", router_done=False)
+            return
+        try:
+            await portmap.open_port(self._session, gateway, ha_ip, self._store.settings.external_port)
+        except portmap.PortMapError:
+            self._store.update(port_mapping="", router_done=False)  # the router step takes it from here
 
     async def set_up_again(self, request: web.Request) -> web.Response:
         if self._removal.busy:

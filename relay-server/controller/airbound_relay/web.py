@@ -23,7 +23,7 @@ from aiohttp import web
 
 from . import access, ops, pages
 from .config import Config
-from .db import Database
+from .db import Database, Device
 from . import github as gh
 from .github import GitHub, GitHubError
 from .patreon import Patreon, PatreonError, authorize_url, valid_signature
@@ -163,11 +163,20 @@ class Web:
             )
         return web.json_response({"state": claim["state"]})
 
-    async def device_status(self, request: web.Request) -> web.Response:
+    def _device_for(self, request: web.Request) -> tuple[Device | None, web.Response | None]:
+        """The device whose key and machine the add-on sent, or the answer when there is none."""
         key = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         device = self._db.device_by_key(key) if key else None
         if device is None:
-            return web.json_response({"state": "unlinked"}, status=404)
+            return None, web.json_response({"state": "unlinked"}, status=404)
+        if not self._db.on_machine(device, request.headers.get("X-AirBound-Machine", "")):
+            return None, web.json_response({"state": "other_machine"}, status=409)
+        return device, None
+
+    async def device_status(self, request: web.Request) -> web.Response:
+        device, refused = self._device_for(request)
+        if refused:
+            return refused
         account = self._db.account(device.patreon_id)
         state = access.state(account, device.patreon_id, self._config.free_users, self._config.grace_days)
         return web.json_response(
@@ -177,15 +186,16 @@ class Web:
                 "grace_until": access.grace_until(account, self._config.grace_days),
                 "join_url": self._config.join_url_for(device.patreon_id),
                 "manage_url": self._config.manage_url_for(device.patreon_id),
+                "foreign_seen": device.foreign_seen,
             }
         )
 
     async def device_unlink(self, request: web.Request) -> web.Response:
-        """The add-on's "Remove AirBound": frees the address and the device slot."""
-        key = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        device = self._db.device_by_key(key) if key else None
-        if device is None:
-            return web.json_response({"state": "unlinked"}, status=404)
+        """The add-on's "Remove AirBound": frees the address and the device slot.
+        Only from the machine that uses the key, so a copied backup can't take an address away."""
+        device, refused = self._device_for(request)
+        if refused:
+            return refused
         self._db.revoke(device.id)
         return web.json_response({"state": "unlinked"})
 

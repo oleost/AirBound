@@ -4,7 +4,8 @@
 
 Installs the hosted relay with staging settings (no real Patreon or
 Cloudflare), then checks: every service runs inside its sandbox, the firewall
-is up, the frp plugin refuses fake clients, the controller reads the hub's
+is up, the frp plugin refuses fake clients and a real key from another machine
+(a copied backup), the controller reads the hub's
 traffic counters, and the health endpoint answers. The VPS is stopped
 afterwards. The result goes to test-results/relay-staging-<commit>.json, which
 scripts/release.py requires when relay-server/ changed.
@@ -41,6 +42,26 @@ PROBES = [
     ("made-up device and key", ['user = "dEVIL"', 'metadatas.key = "x"', "[[proxies]]", 'name = "x"', 'type = "https"', 'customDomains = ["abc.staging.airbound.test"]', "localPort = 1"], "unknown device"),
     ("made-up device asking for a TCP port", ['user = "dEVIL"', 'metadatas.key = "x"', "[[proxies]]", 'name = "x"', 'type = "tcp"', "remotePort = 2222", "localPort = 1"], "unknown device"),
 ]
+
+
+# A real device for the machine check, made in the controller's own database.
+MAKE_DEVICE = """
+from airbound_relay.db import Database
+db = Database("/var/lib/airbound-controller/controller.db")
+db.set_entitled("staging-probe", True)
+device, key = db.link_device("staging-probe", "staging-probe-install-0001", 2)
+print(device.id, key, device.hostname)
+"""
+
+
+def controller_python(vps: TestVPS, code: str) -> str:
+    vps.sh(f"cat > /tmp/probe.py <<'EOF'\n{code}\nEOF\nchmod 644 /tmp/probe.py")
+    return vps.sh("cd /opt/airbound-controller && sudo -u airbound-controller venv/bin/python /tmp/probe.py; rm -f /tmp/probe.py")
+
+
+def device_probe(device: str, key: str, hostname: str, machine: str) -> list[str]:
+    return [f'user = "{device}"', f'metadatas.key = "{key}"', f'metadatas.machine = "{machine}"', "[[proxies]]", 'name = "x"',
+            'type = "https"', f'customDomains = ["{hostname}.staging.airbound.test"]', "localPort = 1"]
 
 
 def probe(vps: TestVPS, lines: list[str]) -> str:
@@ -82,6 +103,12 @@ def main() -> None:
         for description, lines, expected in PROBES:
             answer = probe(vps, lines)
             check(f"refuses: {description}", expected in answer, answer.strip().splitlines()[-1][:120] if answer.strip() else "no answer")
+
+        device, key, hostname = controller_python(vps, MAKE_DEVICE).split()
+        first = probe(vps, device_probe(device, key, hostname, "home"))
+        check("accepts: a device's key from its own machine", "start proxy success" in first, first.strip().splitlines()[-1][:120] if first.strip() else "no answer")
+        copied = probe(vps, device_probe(device, key, hostname, "copy"))
+        check("refuses: the same key from another machine", "other machine" in copied, copied.strip().splitlines()[-1][:120] if copied.strip() else "no answer")
 
         meter = vps.sh("sudo sh -c '. /etc/airbound-controller/controller.env; curl -s -u controller:$HUB_ADMIN_PASSWORD http://127.0.0.1:7400/api/proxy/https'", check=False)
         try:

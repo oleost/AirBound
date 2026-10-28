@@ -1,5 +1,5 @@
 name: AirBound
-version: "0.13.17"
+version: "0.14.0"
 slug: airbound
 description: "Early release: secure remote access to Home Assistant, with enforced two-step login"
 stage: experimental
@@ -26,6 +26,10 @@ ports:
   443/tcp: 443
 ports_description:
   443/tcp: HTTPS for remote access (forward this port on your router)
+# The machine key must not travel with a backup (see machine.py); logs only make backups bigger.
+backup_exclude:
+  - machine_key
+  - logs
 # Everything is set up in the AirBound panel, so the Configuration tab stays empty.
 options: {}
 schema: {}

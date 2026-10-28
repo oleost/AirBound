@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 
 from aiohttp import ClientSession
 
-from . import ha_settings, hosted, portmap, users
+from . import ha_settings, hosted, machine, portmap, users
 from .caddy import Caddy
 from .cloudflare import Cloudflare
 from .mqtt import ENTITIES, Mqtt, entity_id
@@ -182,7 +182,7 @@ class Removal:
 
     async def _hosted(self, task: Task) -> str | None:
         try:
-            await hosted.unlink(self._session, self._store.settings.hosted_key)
+            await hosted.unlink(self._session, self._store.settings.hosted_key, machine.key())
         except hosted.HostedError as err:
             task.detail = str(err)
             return "airbound.dev couldn't be told. The address stays reserved until your membership ends."

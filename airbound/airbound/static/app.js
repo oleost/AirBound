@@ -155,7 +155,7 @@ async function go(page) {
   history.replaceState(null, "", `#${page}`); // a reload stays on this page
   render();
   window.scrollTo(0, 0);
-  if (page !== "off") api("step", { step: page }).catch(() => {});
+  if (!["off", "restored"].includes(page)) api("step", { step: page }).catch(() => {});
   await refreshState().catch(() => {});
   render();
   enter[page]?.();
@@ -506,6 +506,11 @@ steps.hosted = () => {
     body = `
       <div class="card">
         ${h.state === "expired" ? '<div class="notice warn"><p>The link expired before the login finished. Start again.</p></div>' : ""}
+        ${
+          state.settings.tls === "hosted" && state.settings.fqdn
+            ? `<div class="notice info"><p>Log in with the same Patreon account as before, and this Home Assistant keeps <b>${esc(state.settings.fqdn)}</b>.</p></div>`
+            : ""
+        }
         <p>You log in with Patreon on AirBound's website. New members start with a 7-day free trial on Patreon, and you can cancel any time.</p>
         <div class="notice info"><p><b>A hobby project, not a company.</b> Patreon support pays for AirBound's development, and the relay comes with it as a thank-you. It's run on a best-effort basis, with no guarantee of uptime and no liability if it's down, so don't rely on it for alarms or anything safety-related. You can switch to your own server or router at any time. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Read the terms</a></p></div>
         <p class="muted small">AirBound only learns your Patreon member id and whether the membership includes the relay, never your name, email address or card.</p>
@@ -816,6 +821,17 @@ steps.overview = () => {
         : ""
     }
     <div class="card">
+      <h2 style="margin-top:0">Moving or reinstalling Home Assistant</h2>
+      <p>Restore a Home Assistant backup that includes the AirBound app. ${
+        s.mode === "hosted"
+          ? "Your address stays the same after a Patreon login, because a backup alone never moves an airbound.dev address. Without the backup, the new Home Assistant gets a new address, and every phone needs it."
+          : s.mode === "relay"
+            ? "Your relay server keeps working with it. Without the backup, you run the new install command on the server again."
+            : "Afterwards, the router step checks that the port forward points to the new machine. Without the backup, choose your current name again under Your domain."
+      }</p>
+      <p class="muted small">After a restore, AirBound keeps remote access off until you confirm, so a copy of the backup can't go live by itself. The backup holds AirBound's keys: keep it as safe as Home Assistant itself.</p>
+    </div>
+    <div class="card">
       <div class="toggle-row">
         <div>
           <b>Require two-step login from outside</b>
@@ -900,6 +916,37 @@ steps.off = () => {
       ${remove}
       ${errorBox(view.error)}
     </div>`
+  );
+};
+
+// Settings restored from a backup: nothing starts until the person confirms (see machine.py).
+steps.restored = () => {
+  const s = state.settings;
+  const items = ["<li><b>Is this a new machine?</b> Turn the old Home Assistant off first. Two with the same keys would fight over one address.</li>"];
+  if (s.mode === "direct")
+    items.push(
+      s.port_mapping
+        ? `<li><b>Your router</b> forwarded port ${esc(s.external_port)} to the old machine. AirBound asks it to forward to this one instead; if the router doesn't answer, the router step helps you.</li>`
+        : `<li><b>Your router</b> forwards port ${esc(s.external_port)} to the old machine's address. Next, the router step checks it and shows what to change.</li>`
+    );
+  if (s.mode === "hosted")
+    items.push(
+      `<li><b>airbound.dev asks for your Patreon login again.</b> Your address ${esc(s.fqdn)} stays the same. A backup alone is never enough to use it, in case a copy ends up somewhere it shouldn't.</li>`
+    );
+  if (s.mode === "relay") items.push(`<li><b>Your relay server</b> ${esc(s.relay_host)} accepts this Home Assistant as before.</li>`);
+  return solo(
+    `<h1>AirBound was restored from a backup</h1>
+    <p class="lead">Remote access stays off until you confirm that this Home Assistant is where AirBound belongs now. A backup holds AirBound's keys, so AirBound never goes live from one by itself.</p>
+    <div class="card">
+      <h2>Before you continue</h2>
+      <ul class="plain">${items.join("")}</ul>
+    </div>
+    <div class="card">
+      <h2>Not meant to run here?</h2>
+      <p>For example a test copy: uninstall AirBound here, in Settings → Apps → AirBound → Uninstall. Don't use <b>Remove AirBound</b> on this copy, since that also removes what the original Home Assistant still uses, such as its address.</p>
+    </div>
+    ${errorBox(view.error)}
+    <div class="actions"><button class="primary" data-action="restored-confirm" ${view.busy ? "disabled" : ""}>${view.busy ? '<span class="spinner"></span> Starting…' : "Continue on this Home Assistant"}</button></div>`
   );
 };
 
@@ -1155,6 +1202,19 @@ const actions = {
     render();
     followRemoval();
   },
+  async "restored-confirm"() {
+    view.busy = true;
+    view.error = "";
+    render();
+    try {
+      state = await api("restored", {});
+      go(state.landing);
+    } catch (e) {
+      view.busy = false;
+      view.error = e.message;
+      render();
+    }
+  },
   async "set-up-again"() {
     state = await api("set-up-again", {});
     go(state.landing);
@@ -1216,7 +1276,7 @@ function render() {
     // unfinished step, not wherever the user happened to be last time.
     const pages = ["welcome", "overview", "off", ...state.steps.filter((s) => !s.locked).map((s) => s.id)];
     const linked = location.hash.slice(1);
-    current = pages.includes(linked) ? linked : state.landing;
+    current = state.settings.restored ? "restored" : pages.includes(linked) ? linked : state.landing;
     render();
     enter[current]?.();
   } catch (e) {

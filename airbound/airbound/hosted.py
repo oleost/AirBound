@@ -5,6 +5,10 @@ request, shows a short code and a link, the person logs in with Patreon there,
 and AirBound picks up its own key and address. The relay routes connections by
 name without decrypting them; the certificate is made here, at home.
 
+Every call with the device key also sends this machine's key (machine.py):
+the relay answers only the machine that first used the device key, so a key
+copied out of a backup can't read or unlink the address.
+
 The relay's certificate authority is pinned: the CA shipped with the add-on is
 the only one frpc trusts, whatever the website sends.
 """
@@ -30,8 +34,12 @@ class HostedError(Exception):
     pass
 
 
-async def _call(session: ClientSession, method: str, path: str, token: str = "", body: dict | None = None) -> tuple[int, dict]:
+async def _call(
+    session: ClientSession, method: str, path: str, token: str = "", body: dict | None = None, machine: str = ""
+) -> tuple[int, dict]:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+    if machine:
+        headers["X-AirBound-Machine"] = machine
     try:
         async with session.request(method, f"{SERVICE}{path}", json=body, headers=headers, timeout=TIMEOUT) as resp:
             try:
@@ -65,14 +73,19 @@ ACCOUNT_CACHE = 600  # the health checks run every few seconds while the panel i
 _accounts: dict[str, tuple[float, dict]] = {}
 
 
-async def account(session: ClientSession, key: str) -> dict:
-    """{state: active | grace | expired | unlinked, fqdn, grace_until, join_url, manage_url}"""
+async def account(session: ClientSession, key: str, machine: str) -> dict:
+    """{state: active | grace | expired | unlinked | other_machine, fqdn, grace_until, join_url, manage_url, foreign_seen}
+
+    foreign_seen: when another machine last tried this key, or None.
+    """
     cached = _accounts.get(key)
     if cached and time.monotonic() - cached[0] < ACCOUNT_CACHE:
         return cached[1]
-    status, data = await _call(session, "GET", "/api/v1/device", token=key)
+    status, data = await _call(session, "GET", "/api/v1/device", token=key, machine=machine)
     if status == 404:
         data = {"state": "unlinked"}
+    elif status == 409:
+        data = {"state": "other_machine"}
     elif status != 200:
         raise HostedError(f"The hosted relay answered {status}.")
     _accounts.clear()  # only the current key matters
@@ -80,9 +93,11 @@ async def account(session: ClientSession, key: str) -> dict:
     return data
 
 
-async def unlink(session: ClientSession, key: str) -> None:
+async def unlink(session: ClientSession, key: str, machine: str) -> None:
     """Tell the relay this Home Assistant is gone, so its address and device slot are freed."""
-    status, _ = await _call(session, "DELETE", "/api/v1/device", token=key)
+    status, _ = await _call(session, "DELETE", "/api/v1/device", token=key, machine=machine)
+    if status == 409:
+        raise HostedError("airbound.dev links this address to another Home Assistant, so it stays with that one.")
     if status not in (200, 404):  # 404: already unlinked
         raise HostedError(f"The hosted relay answered {status}.")
     _accounts.clear()

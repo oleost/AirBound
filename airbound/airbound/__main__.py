@@ -11,10 +11,11 @@ from pathlib import Path
 
 from aiohttp import ClientSession, web
 
+from . import machine
 from .caddy import GUARD_ADDRESS, Caddy
 from .certwatch import CertWatch
 from .crowdsec import CrowdSec, log_failed_login
-from .golive import GoLive, keep_dns_current, keep_port_open
+from .golive import GoLive, keep_dns_current, keep_port_open, start_saved
 from .guard import AuthGuard
 from .mqtt import ENTITIES, Mqtt, entity_id
 from .relay import Frpc
@@ -38,6 +39,7 @@ async def main() -> None:
         store.update(mode="direct")  # set up before relay mode existed
     if not store.settings.install_id:
         store.update(install_id=secrets.token_urlsafe(24))
+    machine.check(store)
     if store.settings.tls == "hosted" and not store.settings.hosted_since:
         # Linked before 0.11.1 recorded the time; watch certificates from now on.
         store.update(hosted_since=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -88,10 +90,10 @@ async def main() -> None:
         runners.append(runner)
 
     await crowdsec.start()
-    if store.settings.live and store.settings.is_configured:
-        await caddy.apply(store.settings, ha_upstream)
-        if store.settings.mode in ("relay", "hosted"):
-            await frpc.apply(store.settings)
+    if store.settings.restored:
+        _LOGGER.warning("Restored from a backup: remote access stays off until you confirm in the AirBound panel")
+    elif store.settings.live and store.settings.is_configured:
+        await start_saved(store, caddy, frpc, ha_upstream)
     else:
         _LOGGER.info("Not live yet: open AirBound in the Home Assistant sidebar to set it up")
     ddns = asyncio.create_task(keep_dns_current(store, session))

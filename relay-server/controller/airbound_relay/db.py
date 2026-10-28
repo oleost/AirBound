@@ -1,8 +1,8 @@
 """The controller's database: Patreon accounts, devices (Home Assistants) and link requests.
 
 Only what's needed is kept: the Patreon user id, whether the membership gives
-access, per device a hash of its key, its hostname and when it was last seen,
-and for fair use how much data it used each month (kept for three months). No
+access, per device a hash of its key and of the machine that uses it, its
+hostname and when it was last seen, and for fair use how much data it used each month (kept for three months). No
 names, email addresses or anything about the traffic's content.
 """
 
@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS devices (
     hostname TEXT NOT NULL UNIQUE,
     created REAL NOT NULL,
     last_seen REAL,
-    revoked INTEGER NOT NULL DEFAULT 0
+    revoked INTEGER NOT NULL DEFAULT 0,
+    machine_hash TEXT,
+    foreign_seen REAL
 );
 CREATE TABLE IF NOT EXISTS claims (
     id TEXT PRIMARY KEY,
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS kv (
 """
 
 CLAIM_TTL = 900  # a link request is valid for 15 minutes
+MIGRATIONS = (("devices", "machine_hash", "TEXT"), ("devices", "foreign_seen", "REAL"))
 RESERVED = frozenset({"www", "relay", "api", "admin", "mail", "status", "docs", "app"})
 
 
@@ -95,6 +98,8 @@ class Device:
     created: float
     last_seen: float | None
     revoked: bool
+    machine_hash: str | None = None  # the machine that first used the current key
+    foreign_seen: float | None = None  # when another machine last tried the key
 
 
 @dataclass
@@ -111,6 +116,9 @@ class Database:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
         self._db.executescript(SCHEMA)
+        for table, column, kind in MIGRATIONS:  # columns added after the first release
+            if column not in {r["name"] for r in self._db.execute(f"PRAGMA table_info({table})")}:
+                self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
     # Accounts
 
@@ -144,7 +152,10 @@ class Database:
     def _device(self, row) -> Device | None:
         if row is None:
             return None
-        return Device(row["id"], row["patreon_id"], row["install_id"], row["hostname"], row["created"], row["last_seen"], bool(row["revoked"]))
+        return Device(
+            row["id"], row["patreon_id"], row["install_id"], row["hostname"], row["created"], row["last_seen"], bool(row["revoked"]),
+            row["machine_hash"], row["foreign_seen"],
+        )
 
     def device_by_key(self, key: str) -> Device | None:
         row = self._db.execute("SELECT * FROM devices WHERE key_hash = ? AND revoked = 0", (digest(key),)).fetchone()
@@ -160,14 +171,16 @@ class Database:
         """A device and its new key for this Home Assistant.
 
         Linking the same Home Assistant again keeps its address and replaces the
-        key. Past the device limit, the device seen least recently is unlinked.
+        key; the next machine to use the new key claims it. Past the device limit, the device seen least recently is unlinked.
         """
         now = now or time.time()
         key = new_secret()
         existing = [d for d in self.devices_of(patreon_id) if d.install_id == install_id]
         if existing:
             device = existing[0]
-            self._db.execute("UPDATE devices SET key_hash = ? WHERE id = ?", (digest(key), device.id))
+            self._db.execute(
+                "UPDATE devices SET key_hash = ?, machine_hash = NULL, foreign_seen = NULL WHERE id = ?", (digest(key), device.id)
+            )
             return device, key
         others = self.devices_of(patreon_id)
         for old in others[: max(0, len(others) - max_devices + 1)]:
@@ -182,6 +195,27 @@ class Database:
             (device.id, patreon_id, install_id, digest(key), hostname, now),
         )
         return device, key
+
+    def on_machine(self, device: Device, machine: str, now: float | None = None) -> bool:
+        """Is this the machine the device's key belongs to?
+
+        The first machine to use a new key claims it, so a key copied out of a
+        backup is refused while the machine it was made for keeps working; the
+        attempt is recorded so that machine can warn its owner. An add-on from
+        before machines were checked sends none, and is let in until one claims the key.
+        """
+        machine = machine[:128]
+        if device.machine_hash is None:
+            if not machine:
+                return True
+            self._db.execute("UPDATE devices SET machine_hash = ? WHERE id = ? AND machine_hash IS NULL", (digest(machine), device.id))
+            # Another request may have claimed it a moment earlier.
+            device.machine_hash = self._db.execute("SELECT machine_hash FROM devices WHERE id = ?", (device.id,)).fetchone()[0]
+        if machine and secrets.compare_digest(device.machine_hash, digest(machine)):
+            return True
+        device.foreign_seen = now or time.time()
+        self._db.execute("UPDATE devices SET foreign_seen = ? WHERE id = ?", (device.foreign_seen, device.id))
+        return False
 
     def count_devices(self) -> int:
         return self._db.execute("SELECT COUNT(*) FROM devices WHERE revoked = 0").fetchone()[0]

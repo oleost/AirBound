@@ -115,6 +115,8 @@ def landing(settings: Settings, steps: list[Step]) -> str:
     """Where the panel opens: the overview once set up, else the first step that needs attention."""
     if settings.removed:
         return "off"  # only uninstalling is left
+    if settings.restored:
+        return "restored"  # nothing starts before the person confirms
     if settings.live and complete(steps):
         return "overview"
     if not settings.cloudflare_token and not settings.mode and not settings.live:
