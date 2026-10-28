@@ -76,6 +76,12 @@ commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulnch
   3. Puts the copy back if anything fails.
 - **Afterwards:** watch the next report, and the relay's alerts.
 
+## Known Home Assistant behaviour we work around
+
+Not reported upstream; we handle them ourselves. Check after each Home Assistant release whether they still apply.
+
+- **Ingress after restoring an app from another machine** (seen with Supervisor 2026.10.4). The backup brings the other machine's ingress token, and `restore()` in `supervisor/apps/app.py` doesn't reload the Supervisor's token list (update and rebuild do). The panel answers `503: Service Unavailable` until the Supervisor restarts. Home Assistant's UI has no Supervisor restart; *Reboot system* (Settings → System → power button → More options) fixes it. AirBound's restore notification (`checks.py`, the "restored" check) tells people so, and `scripts/copied_backup.py` restarts the Supervisor through the API. A restore on the same machine isn't affected. If a Supervisor release adds the reload, drop the hint and the restart in the script.
+
 ## How to update each part
 
 **frp** (our own build):
