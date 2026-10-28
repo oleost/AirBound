@@ -827,7 +827,7 @@ steps.overview = () => {
           ? "Your address stays the same after a Patreon login, because a backup alone never moves an airbound.dev address. Without the backup, the new Home Assistant gets a new address, and every phone needs it."
           : s.mode === "relay"
             ? "Your relay server keeps working with it. Without the backup, you run the new install command on the server again."
-            : "Afterwards, the router step checks that the port forward points to the new machine. Without the backup, choose your current name again under Your domain."
+            : "Afterwards, the router step checks that the port forward points to the new machine. Without the backup, pick Choose my own name under Your domain and type the current name, so the address stays the same."
       }</p>
       <p class="muted small">After a restore, AirBound keeps remote access off until you confirm, so a copy of the backup can't go live by itself. The backup holds AirBound's keys: keep it as safe as Home Assistant itself.</p>
     </div>

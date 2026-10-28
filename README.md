@@ -131,6 +131,7 @@ The add-on lives in [`airbound/`](airbound), the hosted relay in [`relay-server/
 python -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest tests/unit tests/relay_server tests/ui
+git config core.hooksPath .githooks   # the same tests before every push
 ```
 
 The test environment, the test round, releases, and how every part is kept up to date are in [MAINTENANCE.md](MAINTENANCE.md). `python scripts/readme_screenshots.py` retakes the screenshots above, with real addresses and names replaced by examples.
@@ -143,8 +144,9 @@ The test environment, the test round, releases, and how every part is kept up to
 | Hosted relay (airbound.dev, Patreon login, shared SNI routing) | Working end to end on the test system; waiting for the first outside members |
 | Your own server (relay mode) | Working end to end with a real VPS (Hetzner, Debian 13) |
 | Direct through the router | Working; automatic port opening (UPnP/NAT-PMP) is unit-tested only |
+| Restoring a backup, on the same or another machine | Tested on Home Assistant OS VMs, including a copied backup refused by the hosted relay; direct mode with a real router after a restore is untested |
 
-AirBound was built with the help of AI (Claude Opus 5.5). Every release goes through a full test round on Home Assistant OS VMs (stable and beta channel), the relay server is tested on a private VM before it is deployed, and the whole chain has been confirmed on a real VPS at Hetzner.
+AirBound was built with the help of AI (Claude Opus 5.5). Every release goes through a full test round on a Home Assistant OS VM, each Home Assistant beta is checked on a second VM before it is released, the relay server is tested on a private VM before it is deployed, and the whole chain has been confirmed on a real VPS at Hetzner.
 
 AirBound is not affiliated with Home Assistant or Nabu Casa. If you can, consider supporting Home Assistant's development through [Home Assistant Link](https://www.nabucasa.com/), Nabu Casa's own remote access service, which funds the project.
 

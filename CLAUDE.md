@@ -35,6 +35,8 @@ plus the relay server behind the hosted service at airbound.dev
 .venv/Scripts/python scripts/e2e.py                  # full test round, required before a release
 .venv/Scripts/python scripts/relay_staging.py        # relay changes, on the test VPS
 .venv/Scripts/python scripts/beta.py                 # Home Assistant's beta channel
+.venv/Scripts/python scripts/hosted_restore.py       # restore in hosted mode; needs the maintainer's Patreon login
+.venv/Scripts/python scripts/copied_backup.py        # a copied backup on the beta VM; needs the Patreon login too
 ```
 
 `scripts/release.py` (on the maintainer's request) refuses to release a commit without fresh

@@ -16,7 +16,7 @@ phone ──TLS──▶ :443 hub (frps) ──routes by name (SNI), no decrypti
 | Service | What it does |
 | --- | --- |
 | `airbound-hub` | [frp](https://github.com/fatedier/frp)'s server, built from source with the newest Go by this repository's CI (see MAINTENANCE.md). Port 443 routes each connection by the name in the TLS handshake to that member's Home Assistant; port 7000 takes the tunnels, over TLS pinned to the hub's own CA. |
-| `airbound-controller` | The hub's server plugin and the website's API. A tunnel may log in only with a valid device key and an active membership, may only publish its own hostname, gets a server-side bandwidth limit, and is dropped at the next heartbeat once the membership has lapsed (after a grace period). It also handles linking with Patreon and keeps the member list in sync (webhook plus an hourly check). |
+| `airbound-controller` | The hub's server plugin and the website's API. A tunnel may log in only with a valid device key from the machine that first used it and an active membership, may only publish its own hostname, gets a server-side bandwidth limit, and is dropped at the next heartbeat once the membership has lapsed (after a grace period). It also handles linking with Patreon and keeps the member list in sync (webhook plus an hourly check). |
 | `airbound-web` | Caddy, serving the website on the domain itself. It gets its certificate the same way members do: through the hub (TLS-ALPN). |
 | `airbound-site` | A local tunnel that publishes the website through the hub. |
 | `GET /api/v1/ops` | The relay's health (updates, pending restart, disk, versions, certificate) for the weekly maintenance report; needs `OPS_TOKEN` from `controller.env`. |
@@ -109,7 +109,9 @@ that address (on Cloudflare, Email Routing can forward it to you for free).
 ## Privacy
 
 The controller keeps the Patreon user id, whether the membership gives access, and
-for each linked Home Assistant its address, a hash of its key, when it was last
+for each linked Home Assistant its address, a hash of its key and of the random
+key of the machine that first used it (so a key copied out of a backup is
+refused elsewhere), when another machine last tried the key, when it was last
 connected and how much data it used each month (for fair use, kept for three
 months). Connection logs are kept for 14 days (journald). Nothing about the
 traffic itself is stored or readable.

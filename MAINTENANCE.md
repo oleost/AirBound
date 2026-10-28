@@ -46,7 +46,9 @@ needs a decision under **Action needed**.
 ## From change to users
 
 ```text
-commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulncheck
+push to next ──▶ pre-push hook: unit, relay and browser tests (a failure stops the push)
+      │
+      ▶ CI: unit and relay tests, images built, Trivy, govulncheck
       │
       ▶ test VM (follows next) ──▶ python scripts/e2e.py: hosted relay, MFA guard and
       │                           bypass probes, MFA enforcement, own relay on a fresh test VPS
@@ -58,17 +60,20 @@ commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulnch
 ```
 
 - **Branches:** `next` is development and testing. The test VM follows it (`https://github.com/oleost/AirBound#next`). `main` is what users get: everyone who added the repository without a branch name follows it. Home Assistant keeps the branch it cloned, so `main` must stay the users' branch. A release fast-forwards `main` to a tested commit on `next`. The images for that version already exist, so users never see an update whose image is still building. Work happens on `next`, never directly on `main`.
+- **Pushes:** `.githooks/pre-push` runs the unit, relay and browser tests and refuses the push when one fails. A clone enables it once with `git config core.hooksPath .githooks`.
+- **A result belongs to one commit:** `e2e.py`, `beta.py` and `relay_staging.py` note the commit when they start and refuse to start with uncommitted or unpushed changes (the VMs install from GitHub). A run during which HEAD or the files changed is saved as failed, so `release.py` can't take it for a commit it didn't test. Commit and push first, then start the run, and don't commit while it runs.
 - **Test round** (`scripts/e2e.py`, about 20 minutes; the test environment's private addresses go in `.env`, listed in `scripts/testenv.py`):
   - Deploys `next` to the test VM.
-  - Checks the hosted relay end to end, and the MFA guard against 23 path spellings.
+  - Checks the hosted relay end to end, and from outside that none of 11 spellings of the login path finishes a login without MFA.
   - Runs MFA enforcement with a throwaway user.
   - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, goes back to the hosted relay, and stops the VPS.
-- **Beta check** (`scripts/beta.py`, about 15 minutes): starts the beta VM (Home Assistant OS on the beta channel, stopped otherwise), updates the Supervisor, HA OS and Home Assistant to the newest beta, installs or updates AirBound from `next`, and runs all integration tests with a self-signed address. Then it stops the VM.
+- **Beta check** (`scripts/beta.py`, about 15 minutes): starts the beta VM (Home Assistant OS on the beta channel, stopped otherwise), updates the Supervisor, HA OS and Home Assistant to the newest beta, installs or updates AirBound from `next`, and runs all integration tests with a self-signed address. They include the restore test (`tests/integration/test_restore.py`): a backup of AirBound must leave out the machine key, `frpc.toml` and the logs; after restoring it the address stays off, the panel and a notification ask first, and confirming brings remote access back. The test VM skips that test, since a restore there would need a Patreon login. Then the VM is stopped.
 - **Hosted restore** (`scripts/hosted_restore.py`, about 5 minutes, needs the maintainer's Patreon login): restores a backup of AirBound on the test VM, checks that the address stays off until confirmed, links again and checks that the same address comes back. Run it when the restore or linking flow changes.
 - **Copied backup** (`scripts/copied_backup.py`, about 20 minutes, needs the maintainer's Patreon login): restores the test VM's AirBound backup on the beta VM, tries the copied key with a real frpc from the test VPS, checks that airbound.dev refuses it and the original warns, then links the test VM again. Run it when the machine check or linking changes.
 - **Relay staging** (`scripts/relay_staging.py`): installs `relay-server/` on the test VPS, then checks:
   - that every service starts with its sandbox
   - that the frp plugin refuses fake clients
+  - that a real device key is accepted from the machine that claimed it (read from frpc's environment, as the add-on does) and refused from another
   - that traffic metering reads the hub
 - **Relay deploy** (`scripts/relay_deploy.py`):
   1. Keeps a copy of the running relay.
