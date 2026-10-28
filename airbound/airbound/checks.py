@@ -322,7 +322,10 @@ async def run_all(
                 "restored",
                 "Restored from a backup",
                 False,
-                "Remote access is off until you confirm in the AirBound panel that this Home Assistant is where AirBound belongs now.",
+                "Remote access is off until you confirm in the AirBound panel that this Home Assistant is where AirBound belongs now. "
+                # Supervisor keeps the old ingress address after restoring an app from another machine (tested on 2026.10).
+                "If the AirBound page only says 503: Service Unavailable, Home Assistant hasn't caught up with the restore yet: "
+                "reboot once (Settings → System → the power button at the top → More options → Reboot system), then open AirBound again.",
             )
         )
     elif settings.live:

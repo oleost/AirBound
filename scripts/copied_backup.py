@@ -9,7 +9,12 @@ Then the copied key is tried the way an attacker with the backup would, with a
 real frpc on the test VPS: airbound.dev must refuse it, and the original's
 panel must warn about it. Last, the maintainer links the test VM again with
 Patreon (the link opens in the browser), which gives it a new key; the address
-must keep working throughout. Both VMs and the VPS end up as they were.
+must keep working throughout. The beta VM gets a fresh AirBound afterwards, so
+no copy of the key stays there, and the VPS is stopped.
+
+Restoring an app from another machine leaves the Supervisor with the old
+ingress address (503) until it restarts, which the panel's notification tells
+people; the script restarts the Supervisor the same way.
 """
 
 from __future__ import annotations
@@ -67,8 +72,8 @@ async def panel_call(method: str, path: str, body: dict | None = None) -> dict:
         return await p.call(method, path, body)
 
 
-async def state_after_restart() -> dict:
-    for _ in range(100):
+async def state_after_restart(tries: int = 100) -> dict:
+    for _ in range(tries):
         try:
             return await panel_call("GET", "api/state")
         except Exception:  # still starting
@@ -146,12 +151,21 @@ async def main() -> None:
 
     use_vm({"HA_TOKEN": env("BETA_HA_TOKEN")})
     with BetaVM():
-        await asyncio.sleep(30)  # let the Supervisor and the add-on settle after booting
-        own_backup, beta_slug, _ = await take_backup("AirBound before the copied-backup test")
+        from beta import ensure_installed, supervisor, wait_for_core, wait_for_supervisor
+
+        await wait_for_supervisor()
         try:
             copied = await upload_backup(copy)
             await restore(copied, slug)
-            state = await state_after_restart()
+            await delete_backup(copied)
+            try:
+                state = await state_after_restart(tries=20)
+            except RuntimeError:  # the Supervisor still has the beta VM's old ingress address
+                await supervisor("/supervisor/restart", "post", timeout=120)
+                await asyncio.sleep(30)
+                await wait_for_supervisor()
+                state = await state_after_restart()
+                step("the Supervisor needed a restart before the copy's page opened (as the notification says)")
             if not (state["settings"]["restored"] and state["landing"] == "restored"):
                 raise RuntimeError(f"the copy isn't marked as restored: landing {state['landing']}")
             await asyncio.sleep(15)
@@ -162,14 +176,17 @@ async def main() -> None:
             if state["settings"]["has_hosted_key"] or state["landing"] != "hosted":
                 raise RuntimeError("confirming on the copy kept the copied key")
             step("confirming on the copy drops the copied key and asks for a Patreon login")
-            await delete_backup(copied)
         finally:
-            await restore(own_backup, beta_slug)
+            # A fresh install: nothing of the test VM's may stay on the beta VM.
+            wait_for_core()
+            await wait_for_supervisor()
+            await supervisor(f"/addons/{slug}/uninstall", "post", timeout=600)
+            await ensure_installed()
+            await wait_for_supervisor()
             state = await state_after_restart()
-            if state["settings"].get("restored"):
-                await panel_call("POST", "api/restored", {})
-            await delete_backup(own_backup)
-            step("the beta VM has its own AirBound back")
+            if state["settings"]["mode"]:
+                raise RuntimeError("the beta VM's AirBound isn't fresh after reinstalling")
+            step("the beta VM has a fresh AirBound again")
     use_vm(test_vm)
 
     # 3. The copied key the way an attacker would use it: a real frpc on another machine.
