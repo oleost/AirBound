@@ -101,8 +101,22 @@ async def supervisor(endpoint: str, method: str = "get", data: dict | None = Non
     raise RuntimeError("Home Assistant's Supervisor integration didn't load")
 
 
+async def wait_for_supervisor(timeout: int = 900) -> None:
+    """After a reboot Core can answer before the Supervisor leaves "startup", and it refuses updates until then."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if (await supervisor("/info"))["state"] == "running":
+                return
+        except Exception:  # the connection is down while it restarts
+            pass
+        await asyncio.sleep(10)
+    raise RuntimeError("the Supervisor on the beta VM didn't reach the running state")
+
+
 async def update(part: str) -> str:
     """Update /supervisor, /core or /os to the newest version on the channel; returns the version."""
+    await wait_for_supervisor()
     info = await supervisor(f"/{part}/info")
     if not info.get("update_available"):
         return info["version"]
