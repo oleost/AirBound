@@ -186,7 +186,9 @@ class Removal:
         except hosted.HostedError as err:
             task.detail = str(err)
             return "airbound.dev couldn't be told. The address stays reserved until your membership ends."
-        task.detail = f"{self._store.settings.fqdn} is free again"
+        s = self._store.settings
+        # Linked once, then switched to another mode: the airbound.dev address isn't the current one.
+        task.detail = f"{s.fqdn} is free again" if s.tls == "hosted" else "Your airbound.dev address is free again"
         return None
 
     async def _sensors(self, task: Task) -> None:
