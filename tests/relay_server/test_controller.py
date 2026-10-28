@@ -409,3 +409,17 @@ async def test_status_and_unlink_only_from_the_machine_that_uses_the_key(tmp_pat
 
     assert json.loads(status.body)["foreign_seen"]  # the owner's AirBound can warn about the copy
     assert (await web_app.device_unlink(request("DELETE", "home"))).status == 200
+
+
+async def test_the_website_has_a_tab_icon(tmp_path):
+    from aiohttp.test_utils import make_mocked_request
+
+    from airbound_relay import pages
+    from airbound_relay.web import Web
+
+    web_app = Web(CONFIG, Database(tmp_path / "db"), None, lambda: None)
+    home = await web_app.home(make_mocked_request("GET", "/"))
+    assert '<link rel="icon" href="/favicon.svg"' in home.text
+    icon = await web_app.icon(make_mocked_request("GET", "/favicon.svg"))
+    assert icon.content_type == "image/svg+xml" and icon.text == pages.ICON
+    assert {"/favicon.svg", "/favicon.ico"} <= {r.resource.canonical for r in web_app.app().router.routes()}

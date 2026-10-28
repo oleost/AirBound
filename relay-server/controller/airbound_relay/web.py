@@ -80,6 +80,8 @@ class Web:
         app.router.add_get("/privacy", self.privacy)
         app.router.add_get("/terms", self.terms)
         app.router.add_get("/relay-ca.pem", self.ca)
+        app.router.add_get("/favicon.svg", self.icon)
+        app.router.add_get("/favicon.ico", self.icon)
         app.router.add_post("/api/v1/claims", self.new_claim)
         app.router.add_get("/api/v1/claims/{claim}", self.poll_claim)
         app.router.add_get("/api/v1/device", self.device_status)
@@ -113,6 +115,9 @@ class Web:
 
     async def ca(self, _request: web.Request) -> web.Response:
         return web.Response(text=HUB_CA.read_text() if HUB_CA.exists() else "", content_type="application/x-pem-file")
+
+    async def icon(self, _request: web.Request) -> web.Response:
+        return web.Response(text=pages.ICON, content_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
     # API for Home Assistant
 
