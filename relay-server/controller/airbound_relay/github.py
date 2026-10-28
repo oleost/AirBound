@@ -88,7 +88,7 @@ class GitHub:
 
     @property
     def enabled(self) -> bool:
-        return bool(self._config.github_client_id and self._config.github_client_secret and self._config.github_sponsorable)
+        return self._config.github_sponsors
 
     async def _graphql(self, token: str, query: str, variables: dict) -> dict:
         headers = {"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT}

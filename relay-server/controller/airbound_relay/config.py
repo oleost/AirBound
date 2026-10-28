@@ -81,6 +81,11 @@ class Config:
         return f"{self.base_url}/github/callback"
 
     @property
+    def github_sponsors(self) -> bool:
+        """GitHub Sponsors as a second way in; the pages only mention it when it's set up."""
+        return bool(self.github_client_id and self.github_client_secret and self.github_sponsorable)
+
+    @property
     def github_sponsor_url(self) -> str:
         return f"https://github.com/sponsors/{self.github_sponsorable}"
 

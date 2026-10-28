@@ -187,6 +187,19 @@ def test_terms_say_hobby_project_without_guarantee_and_are_linked_everywhere():
     assert 'href="/terms"' in pages.needs_membership(CONFIG, "c")
 
 
+def test_github_sponsors_is_only_mentioned_once_it_is_set_up():
+    from dataclasses import replace
+
+    from airbound_relay import pages
+
+    off = CONFIG
+    on = replace(CONFIG, github_client_id="id", github_client_secret="secret", github_sponsorable="oleost")
+    for render in (pages.home, pages.privacy, pages.terms):
+        assert "Sponsor" not in render(off) and "sponsorship" not in render(off), render.__name__
+        assert "GitHub" in render(on), render.__name__
+    assert "GitHub Sponsors" in pages.home(on) and "GitHub Sponsors" in pages.terms(on)
+
+
 def test_fair_use_slows_a_device_down_past_its_monthly_allowance(tmp_path):
     from airbound_relay.limits import GB, Limits
 

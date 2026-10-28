@@ -24,7 +24,7 @@ def test_remove_shows_the_plan_asks_first_then_what_is_left(server):
     fake = {"removed": False, "polls": 0, "started": False}
     tasks = [{"id": "stop", "label": "Stop remote access", "state": "done", "detail": ""},
              {"id": "forget", "label": "Forget AirBound's settings and keys", "state": "done", "detail": ""}]
-    notes = ["Your Patreon or GitHub membership goes on until you cancel it there."]
+    notes = ["Your membership goes on until you cancel it where you signed up."]
 
     def handle(route):
         path = route.request.url.split("/api/", 1)[1]

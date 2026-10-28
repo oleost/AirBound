@@ -72,7 +72,7 @@ def plan(s: Settings, http: dict, people: list[dict]) -> Plan:
     if s.cloudflare_token:
         notes.append("Delete the API token you made for AirBound in Cloudflare: My Profile → API Tokens.")
     if s.mode == "hosted" or s.hosted_key:
-        notes.append("Your Patreon or GitHub membership goes on until you cancel it there.")
+        notes.append("Your membership goes on until you cancel it where you signed up.")
     unknown = ha_settings.unknown(http, s.ha_http_before)
     if unknown:
         listed = ", ".join(f"{u['label']}: {u['current']}" for u in unknown)
