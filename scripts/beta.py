@@ -142,10 +142,17 @@ async def to_beta() -> dict:
 
 async def ensure_installed() -> None:
     """A fresh beta VM gets the repository and the add-on; afterwards deploy.py keeps it current."""
-    addons = (await supervisor("/addons"))["addons"]
-    if any(a["name"] == "AirBound" for a in addons):
-        return
     repositories = (await supervisor("/store"))["repositories"]
+    ours = {r["slug"] for r in repositories if r.get("source") == REPOSITORY}
+    addons = (await supervisor("/addons"))["addons"]
+    for addon in addons:
+        if addon["name"] == "AirBound" and addon["repository"] not in ours:
+            # Installed from another repository URL (the one before the rename): start over.
+            print(f"removing {addon['slug']} from repository {addon['repository']}")
+            await supervisor(f"/addons/{addon['slug']}/uninstall", "post", timeout=600)
+            await supervisor(f"/store/repositories/{addon['repository']}", "delete", timeout=300)
+    if any(a["name"] == "AirBound" and a["repository"] in ours for a in addons):
+        return
     if not any(r.get("source") == REPOSITORY for r in repositories):
         await supervisor("/store/repositories", "post", {"repository": REPOSITORY}, timeout=300)
     store = (await supervisor("/store"))["addons"]
