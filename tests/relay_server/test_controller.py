@@ -422,4 +422,8 @@ async def test_the_website_has_a_tab_icon(tmp_path):
     assert '<link rel="icon" href="/favicon.svg"' in home.text
     icon = await web_app.icon(make_mocked_request("GET", "/favicon.svg"))
     assert icon.content_type == "image/svg+xml" and icon.text == pages.ICON
-    assert {"/favicon.svg", "/favicon.ico"} <= {r.resource.canonical for r in web_app.app().router.routes()}
+    assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' in home.text
+    png = await web_app.touch_icon(make_mocked_request("GET", "/apple-touch-icon.png"))
+    assert png.content_type == "image/png" and png.body.startswith(b"\x89PNG")
+    routes = {r.resource.canonical for r in web_app.app().router.routes()}
+    assert {"/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"} <= routes

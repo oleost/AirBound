@@ -14,7 +14,9 @@ HEADERS = {
 
 LOGO = """<svg viewBox="0 0 512 512" width="44" height="44" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1A9BF0"/><stop offset="1" stop-color="#0A5FA3"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-linecap="round" stroke-width="26"><path d="M207 150 A70 70 0 0 1 305 150"/><path d="M168 112 A124 124 0 0 1 344 112" opacity=".6"/></g><path d="M132 304 L256 200 L380 304 V384 a24 24 0 0 1 -24 24 H156 a24 24 0 0 1 -24 -24 Z" fill="none" stroke="#fff" stroke-width="28" stroke-linejoin="round"/><path d="M236 330 v-16 a20 20 0 0 1 40 0 v16" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round"/><rect x="222" y="328" width="68" height="54" rx="11" fill="#fff"/></svg>"""
 
-# The browser tab icon: the logo from assets/logo.svg, served at /favicon.svg and /favicon.ico.
+# The browser tab icon: the logo from assets/logo.svg, served at /favicon.svg. Safari before 26 and
+# iPhone home screens use apple-touch-icon.png next to this file: the same logo, square, since iOS
+# rounds the corners itself.
 ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1A9BF0"/><stop offset="1" stop-color="#0A5FA3"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-linecap="round" stroke-width="26"><path d="M207 150 A70 70 0 0 1 305 150"/><path d="M168 112 A124 124 0 0 1 344 112" opacity=".6"/></g><path d="M132 304 L256 200 L380 304 V384 a24 24 0 0 1 -24 24 H156 a24 24 0 0 1 -24 -24 Z" fill="none" stroke="#fff" stroke-width="28" stroke-linejoin="round"/><path d="M236 330 v-16 a20 20 0 0 1 40 0 v16" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round"/><rect x="222" y="328" width="68" height="54" rx="11" fill="#fff"/></svg>"""
 
 STYLE = """
@@ -37,7 +39,7 @@ ul{padding-left:20px}li{margin-bottom:6px}code{font-family:ui-monospace,Consolas
 def page(title: str, body: str, config: Config) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{escape(title)} · AirBound</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>{STYLE}</style></head>
+<title>{escape(title)} · AirBound</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><style>{STYLE}</style></head>
 <body><main><header>{LOGO}<b>AirBound</b></header>{body}
 <footer><a href="/">Home</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> ·<a href="https://github.com/oleost/AirBound">Source code</a> · <a href="{escape(config.manage_url)}">Patreon</a></footer>
 </main></body></html>"""

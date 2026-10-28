@@ -31,6 +31,7 @@ from .patreon import Patreon, PatreonError, authorize_url, valid_signature
 _LOGGER = logging.getLogger(__name__)
 
 HUB_CA = Path("/etc/airbound-hub/ca.crt")
+TOUCH_ICON = Path(__file__).with_name("apple-touch-icon.png")
 SERVER_NAME = "airbound-hosted-relay"  # the name in the relay's certificate that frpc expects
 INSTALL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 OAUTH_STATE_TTL = 900
@@ -81,7 +82,9 @@ class Web:
         app.router.add_get("/terms", self.terms)
         app.router.add_get("/relay-ca.pem", self.ca)
         app.router.add_get("/favicon.svg", self.icon)
-        app.router.add_get("/favicon.ico", self.icon)
+        # Browsers and iPhones ask for these names even when no page links them.
+        for name in ("/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+            app.router.add_get(name, self.touch_icon)
         app.router.add_post("/api/v1/claims", self.new_claim)
         app.router.add_get("/api/v1/claims/{claim}", self.poll_claim)
         app.router.add_get("/api/v1/device", self.device_status)
@@ -118,6 +121,9 @@ class Web:
 
     async def icon(self, _request: web.Request) -> web.Response:
         return web.Response(text=pages.ICON, content_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+    async def touch_icon(self, _request: web.Request) -> web.Response:
+        return web.Response(body=TOUCH_ICON.read_bytes(), content_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
     # API for Home Assistant
 
