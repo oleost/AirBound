@@ -55,11 +55,8 @@ def test_a_restore_before_anything_was_set_up_needs_no_confirmation(tmp_path):
 
 def test_backups_leave_the_machine_key_out():
     config = CONFIG_YAML.read_text(encoding="utf-8")
-    excluded = config.split("backup_exclude:
-", 1)[1].split("
-# ", 1)[0]
-    assert f"  - {machine.MACHINE_FILE.name}
-" in excluded
+    excluded = config.split("backup_exclude:\n", 1)[1].split("\n# ", 1)[0]
+    assert f"  - {machine.MACHINE_FILE.name}\n" in excluded
 
 
 def test_the_panel_opens_on_the_restored_page(tmp_path):
