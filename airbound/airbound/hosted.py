@@ -34,9 +34,12 @@ async def _call(session: ClientSession, method: str, path: str, token: str = "",
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with session.request(method, f"{SERVICE}{path}", json=body, headers=headers, timeout=TIMEOUT) as resp:
-            data = await resp.json(content_type=None)
+            try:
+                data = await resp.json(content_type=None)
+            except ValueError:  # an error page; the status says enough
+                data = {}
             return resp.status, data if isinstance(data, dict) else {}
-    except (ClientError, TimeoutError, ValueError) as err:
+    except (ClientError, TimeoutError) as err:
         raise HostedError("AirBound couldn't reach the hosted relay's website. Check that Home Assistant has internet access.") from err
 
 
