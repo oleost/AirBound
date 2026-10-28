@@ -65,6 +65,7 @@ commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulnch
   - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, goes back to the hosted relay, and stops the VPS.
 - **Beta check** (`scripts/beta.py`, about 15 minutes): starts the beta VM (Home Assistant OS on the beta channel, stopped otherwise), updates the Supervisor, HA OS and Home Assistant to the newest beta, installs or updates AirBound from `next`, and runs all integration tests with a self-signed address. Then it stops the VM.
 - **Hosted restore** (`scripts/hosted_restore.py`, about 5 minutes, needs the maintainer's Patreon login): restores a backup of AirBound on the test VM, checks that the address stays off until confirmed, links again and checks that the same address comes back. Run it when the restore or linking flow changes.
+- **Copied backup** (`scripts/copied_backup.py`, about 20 minutes, needs the maintainer's Patreon login): restores the test VM's AirBound backup on the beta VM, tries the copied key with a real frpc from the test VPS, checks that airbound.dev refuses it and the original warns, then links the test VM again. Run it when the machine check or linking changes.
 - **Relay staging** (`scripts/relay_staging.py`): installs `relay-server/` on the test VPS, then checks:
   - that every service starts with its sandbox
   - that the frp plugin refuses fake clients

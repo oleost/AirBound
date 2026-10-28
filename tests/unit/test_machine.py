@@ -57,6 +57,7 @@ def test_backups_leave_the_machine_key_out():
     config = CONFIG_YAML.read_text(encoding="utf-8")
     excluded = config.split("backup_exclude:\n", 1)[1].split("\n# ", 1)[0]
     assert f"  - {machine.MACHINE_FILE.name}\n" in excluded
+    assert "  - frpc.toml\n" in excluded
 
 
 def test_the_panel_opens_on_the_restored_page(tmp_path):

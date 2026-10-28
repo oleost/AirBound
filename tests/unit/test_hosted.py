@@ -15,11 +15,12 @@ HOSTED = Settings(
 
 
 def test_hosted_frpc_publishes_only_its_own_hostname_over_pinned_tls():
-    config = render_frpc(HOSTED, "machine-key")
+    config = render_frpc(HOSTED)
     assert f'serverAddr = "{hosted.RELAY_HOST}"' in config
     assert 'user = "d0123456789abcdef"' in config
     assert 'metadatas.key = "secret-key"' in config
-    assert 'metadatas.machine = "machine-key"' in config
+    # The machine key comes from frpc's environment, so the file (which a backup may hold) never has it.
+    assert 'metadatas.machine = "{{ .Envs.AIRBOUND_MACHINE }}"' in config
     assert 'type = "https"' in config
     assert 'customDomains = ["x7k2abcdefgh.airbound.dev"]' in config
     assert f'transport.tls.trustedCaFile = "{hosted.CA_FILE.as_posix()}"' in config

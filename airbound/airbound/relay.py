@@ -44,6 +44,7 @@ RELAY_LISTENER = "127.0.0.1:8444"  # Caddy listener that expects a PROXY protoco
 ADMIN = "127.0.0.1:7400"  # frpc's local status API
 PKI_DIR = Path("/data/relay")
 SERVER_NAME = "airbound-relay"  # the name frpc expects in the relay's certificate
+MACHINE_ENV = "AIRBOUND_MACHINE"  # frpc reads the machine key from here, so no file holds it
 HOST_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
 
 
@@ -129,9 +130,9 @@ def install_command(settings: Settings, pki: dict[str, str]) -> str:
     return f"echo {encoded} | base64 -d | gunzip | $(command -v sudo) sh"
 
 
-def render_frpc(settings: Settings, machine_key: str = "") -> str:
+def render_frpc(settings: Settings) -> str:
     if settings.mode == "hosted":
-        return render_hosted_frpc(settings, machine_key)
+        return render_hosted_frpc(settings)
     host, port = RELAY_LISTENER.split(":")
     admin_host, admin_port = ADMIN.split(":")
     return f"""serverAddr = "{settings.relay_host}"
@@ -157,12 +158,13 @@ transport.proxyProtocolVersion = "v2"
 """
 
 
-def render_hosted_frpc(settings: Settings, machine_key: str) -> str:
+def render_hosted_frpc(settings: Settings) -> str:
     """The shared relay routes by name: an HTTPS proxy for this Home Assistant's own hostname.
 
     The device id and key identify this Home Assistant to the relay's controller,
     which only lets it publish its own hostname, and only from the machine that
-    first used the key.
+    first used the key. The machine key comes from frpc's environment: the
+    config file is in /data, and a backup must never hold the machine key.
     """
     host, port = RELAY_LISTENER.split(":")
     admin_host, admin_port = ADMIN.split(":")
@@ -170,7 +172,7 @@ def render_hosted_frpc(settings: Settings, machine_key: str) -> str:
 serverPort = {hosted.RELAY_PORT}
 user = "{settings.hosted_device}"
 metadatas.key = "{settings.hosted_key}"
-metadatas.machine = "{machine_key}"
+metadatas.machine = "{{{{ .Envs.{MACHINE_ENV} }}}}"
 auth.method = "token"
 auth.token = "{hosted.AUTH_TOKEN}"
 transport.tls.enable = true
@@ -217,9 +219,10 @@ class Frpc:
     async def apply(self, settings: Settings) -> None:
         await self.stop()
         ensure_pki()
-        FRPC_CONFIG.write_text(render_frpc(settings, machine.key()))
+        FRPC_CONFIG.write_text(render_frpc(settings))
         os.chmod(FRPC_CONFIG, 0o600)
-        self._process = await asyncio.create_subprocess_exec("frpc", "-c", str(FRPC_CONFIG))
+        environment = {**os.environ, MACHINE_ENV: machine.key()}
+        self._process = await asyncio.create_subprocess_exec("frpc", "-c", str(FRPC_CONFIG), env=environment)
         _LOGGER.info("Relay client started for %s", hosted.RELAY_HOST if settings.mode == "hosted" else settings.relay_host)
 
     async def stop(self) -> None:

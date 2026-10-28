@@ -92,7 +92,7 @@ async def test_a_restored_backup_stays_off_until_confirmed(live, external):
     try:
         files = await backup_files(backup, slug)
         assert any(f.endswith("data/settings.json") for f in files), files
-        assert not [f for f in files if "data/logs" in f or f.endswith("machine_key")], "the backup holds the machine key or logs"
+        assert not [f for f in files if "data/logs" in f or f.endswith(("machine_key", "frpc.toml"))], "the backup holds the machine key or logs"
 
         async with HA() as ha:
             await ha.supervisor(f"/backups/{backup}/restore/partial", "post", {"addons": [slug]}, timeout=900)

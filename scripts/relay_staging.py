@@ -62,16 +62,18 @@ def controller_python(vps: TestVPS, code: str) -> str:
 
 
 def device_probe(device: str, key: str, hostname: str, machine: str) -> list[str]:
-    return [f'user = "{device}"', f'metadatas.key = "{key}"', f'metadatas.machine = "{machine}"', "[[proxies]]", 'name = "x"',
+    """machine "env": read from AIRBOUND_MACHINE, the way the add-on's frpc config does."""
+    value = "{{ .Envs.AIRBOUND_MACHINE }}" if machine == "env" else machine
+    return [f'user = "{device}"', f'metadatas.key = "{key}"', f'metadatas.machine = "{value}"', "[[proxies]]", 'name = "x"',
             'type = "https"', f'customDomains = ["{hostname}.staging.airbound.test"]', "localPort = 1"]
 
 
-def probe(vps: TestVPS, lines: list[str]) -> str:
+def probe(vps: TestVPS, lines: list[str], environment: str = "") -> str:
     config = "\n".join(['serverAddr = "127.0.0.1"', "serverPort = 7000", 'auth.method = "token"', 'auth.token = "airbound-hosted-relay"',
                         "transport.tls.enable = true", 'transport.tls.trustedCaFile = "/etc/airbound-hub/ca.crt"',
                         'transport.tls.serverName = "airbound-hosted-relay"', "loginFailExit = true", *lines])
     vps.sh(f"cat > /tmp/probe.toml <<'EOF'\n{config}\nEOF")
-    return vps.sh("timeout 8 /usr/local/bin/airbound-site -c /tmp/probe.toml 2>&1 | tail -3; rm -f /tmp/probe.toml", check=False)
+    return vps.sh(f"{environment} timeout 8 /usr/local/bin/airbound-site -c /tmp/probe.toml 2>&1 | tail -3; rm -f /tmp/probe.toml", check=False)
 
 
 def main() -> None:
@@ -111,7 +113,7 @@ def main() -> None:
         if len(made) != 3:
             raise RuntimeError(f"couldn't make a test device: {' '.join(made)[-400:]}")
         device, key, hostname = made
-        first = probe(vps, device_probe(device, key, hostname, "home"))
+        first = probe(vps, device_probe(device, key, hostname, "env"), environment="AIRBOUND_MACHINE=home")
         check("accepts: a device's key from its own machine", "start proxy success" in first, first.strip().splitlines()[-1][:120] if first.strip() else "no answer")
         copied = probe(vps, device_probe(device, key, hostname, "copy"))
         check("refuses: the same key from another machine", "other machine" in copied, copied.strip().splitlines()[-1][:120] if copied.strip() else "no answer")

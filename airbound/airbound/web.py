@@ -282,6 +282,10 @@ class Panel:
                 hosted_poll="",
                 hosted_code="",
             )
+            settings = self._store.settings
+            if settings.live and settings.mode == "hosted":
+                # Linked again while live: the relay stops accepting the old key right away.
+                await self._frpc.apply(settings)
             return web.json_response({"linked": True, "fqdn": new_fqdn, "state": "linked"})
         if state in ("expired", "delivered"):
             # "delivered" without our having stored the key means it was lost; start over.
