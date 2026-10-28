@@ -19,6 +19,7 @@ from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
 from .golive import GoLive
 from .guard import AuthGuard
+from .remove import Removal
 from .settings import ALL_STEPS, COMMON_HOSTNAMES, Store, random_hostname, valid_hostname
 from .supervisor import Supervisor
 
@@ -75,6 +76,7 @@ class Panel:
         certwatch: CertWatch,
         guard: AuthGuard,
         golive: GoLive,
+        removal: Removal,
         ha_upstream: str,
     ) -> None:
         self._store = store
@@ -86,6 +88,7 @@ class Panel:
         self._certwatch = certwatch
         self._guard = guard
         self._golive = golive
+        self._removal = removal
         self._ha_upstream = ha_upstream
 
     def app(self) -> web.Application:
@@ -122,6 +125,10 @@ class Panel:
         r.add_get("/api/bans", self.bans)
         r.add_post("/api/bans/unban", self.unban)
         r.add_post("/api/settings", self.update_settings)
+        r.add_post("/api/pause", self.pause)
+        r.add_get("/api/remove", self.remove_progress)
+        r.add_post("/api/remove", self.remove_start)
+        r.add_post("/api/set-up-again", self.set_up_again)
         return app
 
     async def index(self, _request: web.Request) -> web.Response:
@@ -336,7 +343,7 @@ class Panel:
         return web.json_response(await ha_settings.status(self._supervisor, self._session, self._ha_upstream))
 
     async def ha_settings_apply(self, _request: web.Request) -> web.Response:
-        await ha_settings.apply(self._supervisor)
+        await ha_settings.apply(self._supervisor, self._store)
         return web.json_response({"ok": True})
 
     async def ha_settings_confirm(self, _request: web.Request) -> web.Response:
@@ -470,3 +477,28 @@ class Panel:
             changes.update(domain=body["domain"], hostname=body["hostname"], live=False)
         self._store.update(**changes)
         return web.json_response({"settings": self._store.settings.public()})
+
+    async def pause(self, request: web.Request) -> web.Response:
+        released = await self._removal.pause()
+        return web.json_response({**await self._steps(request), "released": released})
+
+    async def remove_progress(self, _request: web.Request) -> web.Response:
+        """Before: what removing will do and what is left for the person. During and after: progress."""
+        settings = self._store.settings
+        result = {**self._removal.progress(), "removed": settings.removed, "notes": list(settings.removed_notes)}
+        if not settings.removed and not self._removal.tasks:
+            planned = await self._removal.plan()
+            result.update(plan=[t.label for t in planned.tasks], notes=planned.notes)
+        return web.json_response(result)
+
+    async def remove_start(self, request: web.Request) -> web.Response:
+        if self._store.settings.removed:
+            raise web.HTTPConflict()
+        await self._removal.start()
+        return await self.remove_progress(request)
+
+    async def set_up_again(self, request: web.Request) -> web.Response:
+        if self._removal.busy:
+            raise web.HTTPConflict()
+        self._removal.set_up_again()
+        return web.json_response(await self._steps(request))

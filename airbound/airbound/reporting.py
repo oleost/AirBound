@@ -272,6 +272,9 @@ class Reporter:
         await asyncio.sleep(10)  # let the proxy start first
         last_ct_scan = last_status = None
         while True:
+            if self._store.settings.removed:  # nothing of AirBound's should come back in Home Assistant
+                await asyncio.sleep(CONNECTION_INTERVAL)
+                continue
             now = asyncio.get_running_loop().time()
             if last_ct_scan is None or now - last_ct_scan > CT_INTERVAL:
                 try:

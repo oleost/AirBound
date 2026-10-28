@@ -75,3 +75,11 @@ async def account(session: ClientSession, key: str) -> dict:
     _accounts.clear()  # only the current key matters
     _accounts[key] = (time.monotonic(), data)
     return data
+
+
+async def unlink(session: ClientSession, key: str) -> None:
+    """Tell the relay this Home Assistant is gone, so its address and device slot are freed."""
+    status, _ = await _call(session, "DELETE", "/api/v1/device", token=key)
+    if status not in (200, 404):  # 404: already unlinked
+        raise HostedError(f"The hosted relay answered {status}.")
+    _accounts.clear()

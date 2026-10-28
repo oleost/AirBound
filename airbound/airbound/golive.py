@@ -77,7 +77,7 @@ class GoLive:
                 task.state = "running"
                 await getattr(self, f"_{task.id}")(task)
                 task.state = "done"
-            self._store.update(live=True)
+            self._store.update(live=True, paused=False)
         except Exception as err:  # every failure is shown in the UI
             _LOGGER.exception("Go live failed")
             if current:

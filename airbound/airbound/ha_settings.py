@@ -11,6 +11,7 @@ from typing import Any
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
+from .settings import Store
 from .supervisor import Supervisor
 
 WANTED: dict[str, Any] = {
@@ -86,8 +87,39 @@ async def status(supervisor: Supervisor, session: ClientSession, ha_upstream: st
     }
 
 
-async def apply(supervisor: Supervisor) -> None:
+def before(config: dict, recorded: dict) -> dict:
+    """The values to put back on removal: what each setting was before AirBound first changed it
+    (None: not set). A value recorded earlier wins, since by now it may be AirBound's own."""
+    return {**{k: config.get(k) for k in WANTED}, **recorded}
+
+
+def restored(config: dict, recorded: dict) -> dict | None:
+    """The settings with AirBound's values put back as they were, or None if there's nothing to do.
+
+    Only settings that still have AirBound's value change: one the person has
+    changed since is theirs now. A setting that wasn't there goes away again.
+    """
+    back = {k: v for k, v in recorded.items() if k in WANTED and config.get(k) == WANTED[k] and v != WANTED[k]}
+    if not back:
+        return None
+    result = {k: v for k, v in config.items() if k not in _META}
+    for key, value in back.items():
+        if value is None:
+            result.pop(key, None)
+        else:
+            result[key] = value
+    return result
+
+
+def unknown(config: dict, recorded: dict) -> list[dict[str, str]]:
+    """AirBound's settings whose earlier value wasn't recorded (set up before AirBound kept it)."""
+    return [{"label": LABELS[k], "current": _show(config.get(k))} for k in WANTED if k not in recorded and config.get(k) == WANTED[k]]
+
+
+async def apply(supervisor: Supervisor, store: Store | None = None) -> None:
     (state,) = await supervisor.ws({"type": "http/config"})
+    if store is not None:
+        store.update(ha_http_before=before(state["stable"], store.settings.ha_http_before))
     await supervisor.ws({"type": "http/config/configure", "config": merged(state["stable"])})
 
 

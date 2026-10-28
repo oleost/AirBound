@@ -88,6 +88,11 @@ const enter = {
     }),
   router: () => load(api("router"), (d) => (view.info = d)),
   devices: () => load(api("router"), (d) => (view.info = d)),
+  off: () =>
+    load(api("remove"), (d) => {
+      view.removal = d;
+      if (d.busy) followRemoval();
+    }),
   overview: () =>
     poll(async () => {
       view.status = await api("status");
@@ -118,6 +123,16 @@ function followGoLive() {
   }, 1500);
 }
 
+// Removing can restart Home Assistant; polling keeps trying quietly until it's back.
+function followRemoval() {
+  poll(async () => {
+    view.removal = await api("remove");
+    if (!view.removal.busy) await refreshState();
+    render();
+    return view.removal.busy;
+  }, 2000);
+}
+
 // While a link request waits for the Patreon login, check every few seconds.
 function followHosted() {
   poll(async () => {
@@ -140,7 +155,7 @@ async function go(page) {
   history.replaceState(null, "", `#${page}`); // a reload stays on this page
   render();
   window.scrollTo(0, 0);
-  api("step", { step: page }).catch(() => {});
+  if (page !== "off") api("step", { step: page }).catch(() => {});
   await refreshState().catch(() => {});
   render();
   enter[page]?.();
@@ -203,18 +218,21 @@ function stepNav() {
     const isCurrent = s.id === current;
     const icon = s.locked ? LOCK : s.attention ? "!" : s.done ? "✓" : String(i + 1);
     const cls = ["nav-item", isCurrent && "current", s.done && "done", s.attention && "attention", s.locked && "locked"].filter(Boolean).join(" ");
-    const sub = s.locked ? s.reason : s.attention || (s.done ? s.summary : isCurrent ? "You are here" : "Not done yet");
+    const paused = s.id === "go_live" && !s.done && state.settings.paused;
+    const sub = s.locked ? s.reason : s.attention || (s.done ? s.summary : paused ? "Turned off" : isCurrent ? "You are here" : "Not done yet");
     items.push(`<li><button class="${cls}" ${s.locked ? "disabled" : `data-action="goto" data-step="${s.id}"`} ${isCurrent ? 'aria-current="step"' : ""}>
       <span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-text"><span class="nav-title">${esc(s.title)}</span>
       <span class="nav-sub">${esc(sub)}</span></span>${s.locked ? `<span class="sr-only">Locked. ${esc(s.reason)}</span>` : ""}</button></li>`);
   });
-  return `<ol class="nav-list">${items.join("")}</ol>`;
+  const off = current === "off";
+  return `<ol class="nav-list">${items.join("")}</ol>
+    <div class="nav-foot"><button class="link ${off ? "current" : ""}" data-action="goto" data-step="off" ${off ? 'aria-current="page"' : ""}>Turn off or remove AirBound</button></div>`;
 }
 
 function frame(stepId, body) {
   const index = state.steps.findIndex((s) => s.id === stepId);
   const step = state.steps[index];
-  const label = step ? `Step ${index + 1} of ${state.steps.length} · ${step.title}` : "Overview";
+  const label = step ? `Step ${index + 1} of ${state.steps.length} · ${step.title}` : stepId === "off" ? "Turn off or remove" : "Overview";
   const prev = previousPage();
   const back = prev ? `<button class="link back" data-action="goto" data-step="${prev.id}">← ${esc(prev.title)}</button>` : "";
   return `
@@ -230,6 +248,16 @@ function frame(stepId, body) {
 
 function errorBox(message) {
   return message ? `<div class="notice bad" role="alert"><p>${esc(message)}</p></div>` : "";
+}
+
+// Progress of a job that runs in the add-on (going live, removing), one line per task.
+function taskList(tasks) {
+  return (tasks || [])
+    .map((t) => {
+      const icon = t.state === "done" ? "✓" : t.state === "error" ? "!" : t.state === "running" ? '<span class="spinner"></span>' : "·";
+      return `<div class="task ${t.state}"><span class="icon">${icon}</span><div><div>${esc(t.label)}</div>${t.detail ? `<div class="small ${t.state === "error" ? "" : "muted"}">${esc(t.detail)}</div>` : ""}</div></div>`;
+    })
+    .join("");
 }
 
 function minutesLeft(iso) {
@@ -588,12 +616,7 @@ steps.users = () => {
 steps.go_live = () => {
   const s = state.settings;
   const progress = view.progress;
-  const tasks = (progress?.tasks || [])
-    .map((t) => {
-      const icon = t.state === "done" ? "✓" : t.state === "error" ? "!" : t.state === "running" ? '<span class="spinner"></span>' : "·";
-      return `<div class="task ${t.state}"><span class="icon">${icon}</span><div><div>${esc(t.label)}</div>${t.detail ? `<div class="small ${t.state === "error" ? "" : "muted"}">${esc(t.detail)}</div>` : ""}</div></div>`;
-    })
-    .join("");
+  const tasks = taskList(progress?.tasks);
   const failed = progress?.tasks?.some((t) => t.state === "error");
   const done = progress && !progress.busy && !failed && progress.live;
   let actions;
@@ -603,8 +626,12 @@ steps.go_live = () => {
   else actions = '<button class="primary" data-action="go-live">Go live</button>';
   return frame(
     "go_live",
-    `<h1>Go live</h1>
-    <p class="lead">AirBound now creates your address, starts the secure proxy and gets a certificate from Let's Encrypt. This usually takes under a minute.</p>
+    `<h1>${s.paused && !done ? "Remote access is off" : "Go live"}</h1>
+    <p class="lead">${
+      s.paused && !done
+        ? "You turned remote access off, so nobody can reach Home Assistant from outside. Everything is still set up: select <b>Go live</b> to turn it on again."
+        : "AirBound now creates your address, starts the secure proxy and gets a certificate from Let's Encrypt. This usually takes under a minute."
+    }</p>
     <div class="card">
       <div class="muted small">Your Home Assistant address</div>
       <div class="address">${esc(s.url)}</div>
@@ -782,7 +809,7 @@ steps.overview = () => {
             </div>
             ${
               view.bans.some((b) => b.source === "homeassistant")
-                ? `<div class="notice info"><p><b>Home Assistant's own blocks are permanent.</b> If one is your own address, remove its two lines from <span class="mono">ip_bans.yaml</span> in the Home Assistant config folder (for example with the File editor add-on), then restart Home Assistant. AirBound doesn't do this for you, so it never needs write access to your configuration.</p></div>`
+                ? `<div class="notice info"><p><b>Home Assistant's own blocks are permanent.</b> If one is your own address, remove its two lines from <span class="mono">ip_bans.yaml</span> in the Home Assistant config folder (for example with the File editor app), then restart Home Assistant. AirBound doesn't do this for you, so it never needs write access to your configuration.</p></div>`
                 : ""
             }
           </div>`
@@ -798,6 +825,80 @@ steps.overview = () => {
       </div>
       ${view.confirmMfaOff ? `<div class="notice bad"><p>Are you sure? Anyone who has or guesses a password could then log in from anywhere.</p><div class="actions"><button data-action="mfa-off-yes">Turn it off</button><button class="primary" data-action="mfa-off-no">Keep it on</button></div></div>` : ""}
       ${st ? `<p class="muted small" style="margin-top:12px">Logins refused because two-step login was missing (since AirBound started): <b>${st.refused_logins}</b></p>` : ""}
+    </div>`
+  );
+};
+
+// Turning remote access off for a while, or undoing AirBound's changes before uninstalling it.
+// Home Assistant doesn't tell an add-on it's being uninstalled, so this is the only chance to clean up.
+const UNINSTALL = "Uninstall AirBound: Settings → Apps → AirBound → Uninstall. That deletes its folder, with its keys and logs.";
+
+steps.off = () => {
+  const s = state.settings;
+  const r = view.removal;
+  const left = (notes) => `<ul class="plain">${[...notes, UNINSTALL].map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
+  if (s.removed) {
+    return solo(
+      `<h1>AirBound is removed</h1>
+      <p class="lead">Remote access is off, and AirBound has undone what it changed in Home Assistant.</p>
+      ${r?.tasks?.length ? `<div class="card">${taskList(r.tasks)}</div>` : ""}
+      <div class="card">
+        <h2>Left for you</h2>
+        ${r ? left(r.notes) : '<p><span class="spinner"></span> Loading…</p>'}
+      </div>
+      ${errorBox(view.error)}
+      <div class="actions"><button class="link" data-action="set-up-again">Changed your mind? Set up AirBound again</button></div>`
+    );
+  }
+  const busy = r?.busy;
+  const failed = r?.tasks?.some((t) => t.state === "error");
+  let pause = "";
+  if (s.live) {
+    pause = `<div class="card">
+      <h2>Turn off remote access for now</h2>
+      <p>Nobody can reach Home Assistant from outside until you turn it on again. Your address and settings stay.</p>
+      <p class="muted small">People AirBound limited to the home network are let out again, since nobody can come in from outside anyway. If they still have no two-step login when you turn it on again, AirBound limits them again.</p>
+      ${
+        view.confirmPause
+          ? `<div class="notice warn"><p>Your phone and everyone else lose access from outside right away.</p>
+             <div class="actions"><button class="primary" data-action="pause">Turn it off</button><button class="link" data-action="pause-no">Keep it on</button></div></div>`
+          : '<div class="actions"><button data-action="pause-ask">Turn off remote access</button></div>'
+      }
+    </div>`;
+  } else if (s.paused) {
+    pause = `<div class="card">
+      <h2>Remote access is off</h2>
+      <p>You turned it off. Everything is still set up, so turning it on again takes a minute.</p>
+      <div class="actions"><button class="primary" data-action="goto" data-step="go_live">Turn it on again</button></div>
+    </div>`;
+  }
+  let remove;
+  if (!r) remove = '<p><span class="spinner"></span> Checking what AirBound has changed…</p>';
+  else if (r.tasks?.length)
+    remove = `${taskList(r.tasks)}
+      ${busy ? '<p class="muted small">If Home Assistant restarts, this page comes back by itself.</p>' : ""}
+      ${failed ? '<div class="actions"><button class="danger" data-action="remove">Try again</button></div>' : ""}`;
+  else
+    remove = `<p>AirBound will:</p>
+      <ul class="plain">${r.plan.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
+      <p>Then it's up to you:</p>
+      ${left(r.notes)}
+      ${
+        view.confirmRemove
+          ? `<div class="notice bad"><p><b>Remove AirBound?</b> Remote access stops, and AirBound forgets your address and keys. Setting it up again later starts from the beginning${s.mode === "hosted" ? ", with a new airbound.dev address" : ""}.</p>
+             <div class="actions"><button class="danger" data-action="remove">Remove AirBound</button><button class="link" data-action="remove-no">Cancel</button></div></div>`
+          : '<div class="actions"><button data-action="remove-ask">Remove AirBound…</button></div>'
+      }`;
+  return frame(
+    "off",
+    `<h1>Turn off or remove AirBound</h1>
+    <p class="lead">Stopping the app also turns remote access off, but leaves AirBound's changes in Home Assistant. Use this page instead.</p>
+    ${pause}
+    <div class="card">
+      <h2>Remove AirBound</h2>
+      <p>Before you uninstall AirBound, let it undo what it changed outside its own folder. Home Assistant doesn't tell apps they're being uninstalled, so it can't clean up afterwards.</p>
+      ${remove}
+      ${errorBox(view.error)}
     </div>`
   );
 };
@@ -1026,6 +1127,38 @@ const actions = {
     view.bans = (await api("bans/unban", { ip: el.dataset.ip })).bans;
     render();
   },
+  "pause-ask"() {
+    view.confirmPause = true;
+    render();
+  },
+  "pause-no"() {
+    view.confirmPause = false;
+    render();
+  },
+  async pause() {
+    state = await api("pause", {});
+    view.confirmPause = false;
+    render();
+  },
+  "remove-ask"() {
+    view.confirmRemove = true;
+    render();
+  },
+  "remove-no"() {
+    view.confirmRemove = false;
+    render();
+  },
+  async remove() {
+    view.error = "";
+    view.confirmRemove = false;
+    view.removal = await api("remove", {});
+    render();
+    followRemoval();
+  },
+  async "set-up-again"() {
+    state = await api("set-up-again", {});
+    go(state.landing);
+  },
   "mfa-off-no"() {
     view.confirmMfaOff = false;
     render();
@@ -1081,7 +1214,7 @@ function render() {
     state = await api("state");
     // Open where attention is needed: the overview once set up, else the first
     // unfinished step, not wherever the user happened to be last time.
-    const pages = ["welcome", "overview", ...state.steps.filter((s) => !s.locked).map((s) => s.id)];
+    const pages = ["welcome", "overview", "off", ...state.steps.filter((s) => !s.locked).map((s) => s.id)];
     const linked = location.hash.slice(1);
     current = pages.includes(linked) ? linked : state.landing;
     render();

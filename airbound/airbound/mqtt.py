@@ -13,6 +13,7 @@ reporting falls back to Home Assistant's REST API.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from typing import Any
@@ -93,6 +94,15 @@ def discovery_messages(slug: str = "") -> list[tuple[str, dict]]:
     return messages
 
 
+def removal_topics() -> list[str]:
+    """Every retained topic AirBound publishes. An empty retained message deletes each,
+    and an empty discovery message makes Home Assistant remove the entity."""
+    topics = [topic for topic, _ in discovery_messages()]
+    for key in ENTITIES:
+        topics += [f"{BASE}/{key}/state", f"{BASE}/{key}/attributes"]
+    return topics + [AVAILABILITY]
+
+
 class Mqtt:
     """Keeps a connection to the broker and publishes; reconnects by itself."""
 
@@ -107,6 +117,10 @@ class Mqtt:
     def connected(self) -> bool:
         return self._connected.is_set()
 
+    @property
+    def running(self) -> bool:
+        return self._task is not None
+
     def start(self) -> None:
         self._task = asyncio.create_task(self._run())
 
@@ -118,6 +132,25 @@ class Mqtt:
                 pass
         if self._task:
             self._task.cancel()
+
+    async def remove(self) -> None:
+        """Take the device and its entities out of Home Assistant, then disconnect for good."""
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task  # a clean disconnect, so the broker doesn't send the will afterwards
+            self._task = None
+        cfg = self._config
+        # Our own short connection, without a will: the running one would leave "offline" behind.
+        async with aiomqtt.Client(
+            hostname=cfg["host"],
+            port=int(cfg.get("port", 1883)),
+            username=cfg.get("username"),
+            password=cfg.get("password"),
+            identifier="airbound-remove",
+        ) as client:
+            for topic in removal_topics():
+                await client.publish(topic, b"", retain=True)
 
     async def _run(self) -> None:
         cfg = self._config

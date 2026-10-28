@@ -18,6 +18,7 @@ from .golive import GoLive, keep_dns_current, keep_port_open
 from .guard import AuthGuard
 from .mqtt import ENTITIES, Mqtt, entity_id
 from .relay import Frpc
+from .remove import Removal
 from .reporting import Reporter
 from .settings import Store
 from .supervisor import Supervisor, SupervisorError
@@ -51,7 +52,7 @@ async def main() -> None:
     broker_config = await supervisor.mqtt_service()
     slug = (await supervisor.get("/addons/self/info")).get("slug", "")
     broker = Mqtt(broker_config, slug) if broker_config else None
-    if broker:
+    if broker and not store.settings.removed:
         # Once, on the switch from REST to MQTT: plain REST states must be gone
         # before discovery, or Home Assistant gives the new entities IDs ending
         # in _2. Never again afterwards: by then the IDs belong to the MQTT
@@ -64,7 +65,7 @@ async def main() -> None:
                     pass
             MQTT_MIGRATED.touch()
         broker.start()
-    else:
+    elif not broker:
         _LOGGER.info("No MQTT broker found; sensors go through the REST API instead")
     reporter = Reporter(store, supervisor, session, frpc, crowdsec, certwatch, broker)
 
@@ -75,7 +76,8 @@ async def main() -> None:
 
     guard = AuthGuard(f"http://{ha_upstream}", require_mfa=lambda: store.settings.require_mfa, listener=on_guard_event)
     golive = GoLive(store, caddy, frpc, session, ha_upstream)
-    panel = Panel(store, supervisor, session, caddy, frpc, crowdsec, certwatch, guard, golive, ha_upstream)
+    removal = Removal(store, supervisor, session, caddy, frpc, broker)
+    panel = Panel(store, supervisor, session, caddy, frpc, crowdsec, certwatch, guard, golive, removal, ha_upstream)
 
     runners = []
     guard_host, guard_port = GUARD_ADDRESS.split(":")

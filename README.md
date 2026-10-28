@@ -39,7 +39,7 @@
    <details>
    <summary>Or add it by hand</summary>
 
-   In Home Assistant, go to **Settings → Add-ons → Add-on store**, open the **⋮** menu at the top right, choose **Repositories**, and add:
+   In Home Assistant, go to **Settings → Apps → Install app**, open the **⋮** menu at the top right, choose **Repositories**, and add:
 
    ```text
    https://github.com/oleost/AirBound

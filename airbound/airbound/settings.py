@@ -7,7 +7,7 @@ import json
 import os
 import re
 import secrets
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 
 SETTINGS_FILE = Path("/data/settings.json")
@@ -79,6 +79,10 @@ class Settings:
     hosted_code: str = ""
     hosted_since: str = ""  # when this hostname was first linked (ISO 8601 UTC), for the certificate watch
     auto_limited: tuple[str, ...] = ()  # users AirBound limited to the home network because they have no MFA
+    ha_http_before: dict = field(default_factory=dict)  # HA's HTTP settings before AirBound changed them, to put back
+    paused: bool = False  # the person turned remote access off; going live turns it on again
+    removed: bool = False  # the person removed AirBound's changes; only uninstalling is left
+    removed_notes: tuple[str, ...] = ()  # what the person still has to do by hand after removing
 
     @property
     def fqdn(self) -> str:
@@ -124,7 +128,14 @@ class Store:
         return Settings(**{k: v for k, v in raw.items() if k in known})
 
     def update(self, **changes) -> Settings:
-        self.settings = replace(self.settings, **changes)
+        return self._save(replace(self.settings, **changes))
+
+    def reset(self, **keep) -> Settings:
+        """Back to a fresh install, with only the given values."""
+        return self._save(Settings(**keep))
+
+    def _save(self, settings: Settings) -> Settings:
+        self.settings = settings
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(json.dumps(asdict(self.settings), indent=2))
         os.chmod(tmp, 0o600)

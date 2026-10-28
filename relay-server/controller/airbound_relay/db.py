@@ -229,6 +229,9 @@ class Database:
     def device(self, device_id: str) -> Device | None:
         return self._device(self._db.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone())
 
+    def revoke(self, device_id: str) -> None:
+        self._db.execute("UPDATE devices SET revoked = 1 WHERE id = ?", (device_id,))
+
     # Monthly traffic, for fair use. "server" is what the whole server sent.
 
     def traffic(self, month: str, device_id: str) -> int:

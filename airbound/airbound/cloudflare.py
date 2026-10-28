@@ -84,6 +84,15 @@ class Cloudflare:
         records = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "CAA", "name": name})
         return any((r.get("data") or {}).get("value") == ";" for r in records)
 
+    async def delete_records(self, zone_id: str, name: str) -> int:
+        """Delete what AirBound made for name: its A record and the CAA lock. Returns how many."""
+        doomed = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "A", "name": name})
+        locks = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "CAA", "name": name})
+        doomed += [r for r in locks if (r.get("data") or {}).get("value") == ";"]
+        for record in doomed:
+            await self._request("DELETE", f"/zones/{zone_id}/dns_records/{record['id']}")
+        return len(doomed)
+
     async def upsert_a_record(self, zone_id: str, name: str, ip: str) -> None:
         """Point name at ip, DNS only (grey cloud) so Cloudflare never sees the traffic."""
         existing = await self._request("GET", f"/zones/{zone_id}/dns_records", params={"type": "A", "name": name})

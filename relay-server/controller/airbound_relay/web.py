@@ -83,6 +83,7 @@ class Web:
         app.router.add_post("/api/v1/claims", self.new_claim)
         app.router.add_get("/api/v1/claims/{claim}", self.poll_claim)
         app.router.add_get("/api/v1/device", self.device_status)
+        app.router.add_delete("/api/v1/device", self.device_unlink)
         app.router.add_get("/api/v1/ops", self.ops_report)
         app.router.add_get("/link/{claim}", self.link_page)
         app.router.add_get("/link/{claim}/login", self.link_login)
@@ -178,6 +179,15 @@ class Web:
                 "manage_url": self._config.manage_url_for(device.patreon_id),
             }
         )
+
+    async def device_unlink(self, request: web.Request) -> web.Response:
+        """The add-on's "Remove AirBound": frees the address and the device slot."""
+        key = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        device = self._db.device_by_key(key) if key else None
+        if device is None:
+            return web.json_response({"state": "unlinked"}, status=404)
+        self._db.revoke(device.id)
+        return web.json_response({"state": "unlinked"})
 
     async def ops_report(self, request: web.Request) -> web.Response:
         """The relay's health for the weekly maintenance report; only with the operator's token."""

@@ -297,3 +297,24 @@ def test_ops_report_has_the_health_fields(tmp_path, monkeypatch):
     for key in ("reboot_required", "days_since_unattended_upgrade", "disk_used_percent", "frp_build", "website_certificate_days_left", "devices"):
         assert key in report
     assert report["devices"] == 1 and report["accounts_with_access"] == 1
+
+
+async def test_a_home_assistant_can_unlink_itself_with_its_key(tmp_path):
+    from aiohttp.test_utils import make_mocked_request
+
+    from airbound_relay.web import Web
+
+    db = Database(tmp_path / "db")
+    device, key = linked(db)
+    web_app = Web(CONFIG, db, None, lambda: None)
+
+    def unlink(token):
+        return web_app.device_unlink(make_mocked_request("DELETE", "/api/v1/device", headers={"Authorization": f"Bearer {token}"}))
+
+    assert (await unlink("made-up")).status == 404
+    assert db.device_by_key(key).id == device.id
+    assert (await unlink(key)).status == 200
+    assert db.device_by_key(key) is None and db.devices_of("u1") == []
+    assert (await unlink(key)).status == 404  # already gone
+    again, _ = db.link_device("u1", INSTALL, CONFIG.max_devices)
+    assert again.hostname != device.hostname  # a fresh start gets a new address
