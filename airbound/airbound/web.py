@@ -384,7 +384,9 @@ class Panel:
 
     async def go_live_start(self, _request: web.Request) -> web.Response:
         if self._store.settings.restored:
-            raise web.HTTPConflict()  # confirmed on the restored page first
+            return web.json_response(
+                {"error": "AirBound was restored from a backup. Confirm on its first page that it belongs on this Home Assistant."}, status=409
+            )
         self._golive.start()
         return await self.go_live_progress(_request)
 

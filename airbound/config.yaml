@@ -1,5 +1,5 @@
 name: AirBound
-version: "0.14.0"
+version: "0.14.1"
 slug: airbound
 description: "Early release: secure remote access to Home Assistant, with enforced two-step login"
 stage: experimental
