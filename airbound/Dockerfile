@@ -19,7 +19,7 @@ RUN case "$BUILD_ARCH" in \
       aarch64) ARCH=arm64; SHA=74fd646005fe79be5033d91a92ffb3e0694dd1497f9170eaeafcf7bcbc4a1790 ;; \
       *) echo "unsupported arch $BUILD_ARCH" && exit 1 ;; \
     esac \
-    && wget -q -O /tmp/frp.tgz "https://github.com/oleost/HA-AirBound/releases/download/${FRP_RELEASE}/frp_${FRP_VERSION}_linux_${ARCH}.tar.gz" \
+    && wget -q -O /tmp/frp.tgz "https://github.com/oleost/AirBound/releases/download/${FRP_RELEASE}/frp_${FRP_VERSION}_linux_${ARCH}.tar.gz" \
     && echo "$SHA  /tmp/frp.tgz" | sha256sum -c - \
     && tar -xzf /tmp/frp.tgz -C /tmp \
     && mv /tmp/frp_${FRP_VERSION}_linux_${ARCH}/frpc /usr/local/bin/frpc

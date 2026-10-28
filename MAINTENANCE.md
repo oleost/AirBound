@@ -57,7 +57,7 @@ commit on next ──▶ CI: unit + browser tests, images built, Trivy, govulnch
                                      python scripts/relay_deploy.py ──▶ airbound.dev, with automatic rollback
 ```
 
-- **Branches:** `next` is development and testing. The test VM follows it (`https://github.com/oleost/HA-AirBound#next`). `main` is what users get: everyone who added the repository without a branch name follows it. Home Assistant keeps the branch it cloned, so `main` must stay the users' branch. A release fast-forwards `main` to a tested commit on `next`. The images for that version already exist, so users never see an update whose image is still building. Work happens on `next`, never directly on `main`.
+- **Branches:** `next` is development and testing. The test VM follows it (`https://github.com/oleost/AirBound#next`). `main` is what users get: everyone who added the repository without a branch name follows it. Home Assistant keeps the branch it cloned, so `main` must stay the users' branch. A release fast-forwards `main` to a tested commit on `next`. The images for that version already exist, so users never see an update whose image is still building. Work happens on `next`, never directly on `main`.
 - **Test round** (`scripts/e2e.py`, about 20 minutes; the test environment's private addresses go in `.env`, listed in `scripts/testenv.py`):
   - Deploys `next` to the test VM.
   - Checks the hosted relay end to end, and the MFA guard against 23 path spellings.
@@ -103,5 +103,5 @@ GitHub know. The relay creates it at install time. Copy it into the
 repository secret once, from a machine that has SSH access to the relay:
 
 ```sh
-ssh root@<relay> '. /etc/airbound-controller/controller.env; printf %s "$OPS_TOKEN"' | gh secret set OPS_TOKEN -R oleost/HA-AirBound
+ssh root@<relay> '. /etc/airbound-controller/controller.env; printf %s "$OPS_TOKEN"' | gh secret set OPS_TOKEN -R oleost/AirBound
 ```

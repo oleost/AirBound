@@ -25,7 +25,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 NAME="frp_${VERSION}_linux_${ARCH}"
 echo "Downloading the relay (frp $VERSION)..."
-curl -fsSL -o "$TMP/frp.tgz" "https://github.com/oleost/HA-AirBound/releases/download/${RELEASE}/${NAME}.tar.gz"
+curl -fsSL -o "$TMP/frp.tgz" "https://github.com/oleost/AirBound/releases/download/${RELEASE}/${NAME}.tar.gz"
 echo "$SHA  $TMP/frp.tgz" | sha256sum -c - >/dev/null || fail "the download didn't match its checksum."
 tar -xzf "$TMP/frp.tgz" -C "$TMP"
 install -m 0755 "$TMP/$NAME/frps" /usr/local/bin/airbound-relay

@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO = os.environ.get("GITHUB_REPOSITORY", "oleost/HA-AirBound")
+REPO = os.environ.get("GITHUB_REPOSITORY", "oleost/AirBound")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 NOW = datetime.datetime.now(datetime.UTC)
 ISSUE_TITLE = "Weekly maintenance report"

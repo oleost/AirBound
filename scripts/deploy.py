@@ -1,6 +1,6 @@
 """Deploy to the test VM the way users get updates: from the GitHub repository.
 
-The add-on is installed from https://github.com/oleost/HA-AirBound, so a deploy
+The add-on is installed from https://github.com/oleost/AirBound, so a deploy
 means: the version bump is committed and pushed, GitHub Actions builds the images,
 then the Supervisor reloads the store and updates the add-on, pulling the image.
 

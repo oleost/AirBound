@@ -36,7 +36,7 @@ def page(title: str, body: str, config: Config) -> str:
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)} · AirBound</title><style>{STYLE}</style></head>
 <body><main><header>{LOGO}<b>AirBound</b></header>{body}
-<footer><a href="/">Home</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> ·<a href="https://github.com/oleost/HA-AirBound">Source code</a> · <a href="{escape(config.manage_url)}">Patreon</a></footer>
+<footer><a href="/">Home</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> ·<a href="https://github.com/oleost/AirBound">Source code</a> · <a href="{escape(config.manage_url)}">Patreon</a></footer>
 </main></body></html>"""
 
 
@@ -44,7 +44,7 @@ def home(config: Config) -> str:
     return f"""<div class="card"><h1>Secure remote access for Home Assistant</h1>
 <p>AirBound gives your Home Assistant its own secure web address that works in the Companion app and any browser, without a VPN and without opening ports on your router.</p>
 <p>AirBound is a free, open-source hobby project, made by one person in their spare time. Supporters on Patreon or GitHub Sponsors help pay for its development and get access to this hosted relay as a thank-you. Install the AirBound add-on in Home Assistant, choose <b>AirBound hosted relay</b>, and it walks you through the rest. New supporters get a 7-day free trial.</p>
-<a class="button" href="https://github.com/oleost/HA-AirBound">Get the add-on</a>
+<a class="button" href="https://github.com/oleost/AirBound">Get the add-on</a>
 <a class="button secondary" href="{escape(config.join_url)}">Support on Patreon</a></div>
 <div class="card"><h2>Please read before you join</h2>
 <p>The relay is offered as is, on a best-effort basis, with no guarantee that it's always up and no liability if it isn't. Don't rely on it for anything where an outage could cause harm, such as alarms or safety equipment. The add-on also works with your own server or router, so you can always move. <a href="/terms">Read the terms</a>.</p></div>
@@ -95,7 +95,7 @@ def terms(config: Config) -> str:
 <h2>If the relay closes</h2>
 <p>If the hosted relay is ever shut down for good, the plan is to say so on Patreon and GitHub at least 30 days ahead when possible. The add-on keeps working with your own server or router.</p>
 <h2>Changes and contact</h2>
-<p>These terms can change; the date above shows the latest version, and bigger changes are posted on Patreon. Questions go to <a href="https://github.com/oleost/HA-AirBound/issues">GitHub issues</a>. To report abuse of the relay, such as attacks or illegal content coming from its address, write to <a href="mailto:abuse@{escape(config.domain)}">abuse@{escape(config.domain)}</a>. See also the <a href="/privacy">privacy page</a>.</p></div>"""
+<p>These terms can change; the date above shows the latest version, and bigger changes are posted on Patreon. Questions go to <a href="https://github.com/oleost/AirBound/issues">GitHub issues</a>. To report abuse of the relay, such as attacks or illegal content coming from its address, write to <a href="mailto:abuse@{escape(config.domain)}">abuse@{escape(config.domain)}</a>. See also the <a href="/privacy">privacy page</a>.</p></div>"""
 
 
 def confirm_code(claim_id: str, code: str, github: bool = False) -> str:

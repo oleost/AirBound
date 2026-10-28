@@ -1,7 +1,9 @@
 <p align="center"><img src="assets/banner.png" alt="AirBound: secure remote access for Home Assistant" width="820"></p>
 
+<h1 align="center">AirBound for Home Assistant</h1>
+
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Foleost%2FHA-AirBound"><img src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg" alt="Add the AirBound repository to your Home Assistant" height="40"></a>
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Foleost%2FAirBound"><img src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg" alt="Add the AirBound repository to your Home Assistant" height="40"></a>
 </p>
 
 <p align="center">
@@ -32,7 +34,7 @@
 
 1. **Add the repository.** Select the button below. It opens your Home Assistant and asks to add the AirBound add-on repository.
 
-   <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Foleost%2FHA-AirBound"><img src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg" alt="Add the AirBound repository to your Home Assistant" height="32"></a>
+   <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Foleost%2FAirBound"><img src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg" alt="Add the AirBound repository to your Home Assistant" height="32"></a>
 
    <details>
    <summary>Or add it by hand</summary>
@@ -40,7 +42,7 @@
    In Home Assistant, go to **Settings → Add-ons → Add-on store**, open the **⋮** menu at the top right, choose **Repositories**, and add:
 
    ```text
-   https://github.com/oleost/HA-AirBound
+   https://github.com/oleost/AirBound
    ```
 
    </details>

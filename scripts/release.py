@@ -28,7 +28,7 @@ from testenv import RESULTS, ROOT, head_commit, run
 
 from deploy import image_published  # noqa: E402
 
-REPO = "oleost/HA-AirBound"
+REPO = "oleost/AirBound"
 SCAN_MAX_AGE_DAYS = 7
 RELAY_PATHS = ["relay-server", "airbound/airbound/vps_harden.sh"]
 

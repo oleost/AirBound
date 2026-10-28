@@ -38,7 +38,7 @@ os.environ["HA_TOKEN"] = env("BETA_HA_TOKEN")
 
 from ha import HA, HAError  # noqa: E402
 
-REPOSITORY = "https://github.com/oleost/HA-AirBound#next"
+REPOSITORY = "https://github.com/oleost/AirBound#next"
 
 
 class BetaVM:

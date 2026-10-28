@@ -52,7 +52,7 @@ trap 'rm -rf "$TMP"' EXIT
 if [ "$(cat /usr/local/lib/airbound-frp-build 2>/dev/null || true)" != "$FRP_RELEASE" ]; then
   echo "Downloading frp $FRP_VERSION ($FRP_RELEASE)..."
   NAME="frp_${FRP_VERSION}_linux_${ARCH}"
-  curl -fsSL -o "$TMP/frp.tgz" "https://github.com/oleost/HA-AirBound/releases/download/${FRP_RELEASE}/${NAME}.tar.gz"
+  curl -fsSL -o "$TMP/frp.tgz" "https://github.com/oleost/AirBound/releases/download/${FRP_RELEASE}/${NAME}.tar.gz"
   echo "$FRP_SHA  $TMP/frp.tgz" | sha256sum -c - >/dev/null || fail "frp didn't match its checksum."
   tar -xzf "$TMP/frp.tgz" -C "$TMP"
   install -m 0755 "$TMP/$NAME/frps" /usr/local/bin/airbound-hub

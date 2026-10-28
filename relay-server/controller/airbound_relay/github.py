@@ -21,7 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 AUTHORIZE = "https://github.com/login/oauth/authorize"
 TOKEN = "https://github.com/login/oauth/access_token"
 GRAPHQL = "https://api.github.com/graphql"
-USER_AGENT = "AirBound-relay/1.0 (+https://github.com/oleost/HA-AirBound)"
+USER_AGENT = "AirBound-relay/1.0 (+https://github.com/oleost/AirBound)"
 TIMEOUT = ClientTimeout(total=30)
 PREFIX = "gh:"
 

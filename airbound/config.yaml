@@ -3,7 +3,7 @@ version: "0.13.11"
 slug: airbound
 description: "Early release: secure remote access to Home Assistant, with enforced two-step login"
 stage: experimental
-url: https://github.com/oleost/HA-AirBound
+url: https://github.com/oleost/AirBound
 # Ready-made images from GitHub Actions (.github/workflows/build.yaml), so nothing is compiled on your machine.
 image: "ghcr.io/oleost/{arch}-addon-airbound"
 arch:

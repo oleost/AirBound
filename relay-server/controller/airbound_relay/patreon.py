@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 API = "https://www.patreon.com/api/oauth2/v2"
 AUTHORIZE = "https://www.patreon.com/oauth2/authorize"
 TOKEN = "https://www.patreon.com/api/oauth2/token"
-USER_AGENT = "AirBound-relay/1.0 (+https://github.com/oleost/HA-AirBound)"
+USER_AGENT = "AirBound-relay/1.0 (+https://github.com/oleost/AirBound)"
 TIMEOUT = ClientTimeout(total=30)
 MEMBER_FIELDS = "patron_status,is_free_trial,last_charge_status"
 WEBHOOK_TRIGGERS = ["members:create", "members:update", "members:delete", "members:pledge:create", "members:pledge:update", "members:pledge:delete"]
