@@ -56,7 +56,9 @@ print(device.id, key, device.hostname)
 
 def controller_python(vps: TestVPS, code: str) -> str:
     vps.sh(f"cat > /tmp/probe.py <<'EOF'\n{code}\nEOF\nchmod 644 /tmp/probe.py")
-    return vps.sh("cd /opt/airbound-controller && sudo -u airbound-controller venv/bin/python /tmp/probe.py; rm -f /tmp/probe.py")
+    out = vps.sh("cd /opt/airbound-controller && sudo -u airbound-controller env PYTHONPATH=/opt/airbound-controller "
+                 "venv/bin/python /tmp/probe.py 2>&1; rm -f /tmp/probe.py")
+    return out
 
 
 def device_probe(device: str, key: str, hostname: str, machine: str) -> list[str]:
@@ -104,7 +106,10 @@ def main() -> None:
             answer = probe(vps, lines)
             check(f"refuses: {description}", expected in answer, answer.strip().splitlines()[-1][:120] if answer.strip() else "no answer")
 
-        device, key, hostname = controller_python(vps, MAKE_DEVICE).split()
+        made = controller_python(vps, MAKE_DEVICE).split()
+        if len(made) != 3:
+            raise RuntimeError(f"couldn't make a test device: {' '.join(made)[-400:]}")
+        device, key, hostname = made
         first = probe(vps, device_probe(device, key, hostname, "home"))
         check("accepts: a device's key from its own machine", "start proxy success" in first, first.strip().splitlines()[-1][:120] if first.strip() else "no answer")
         copied = probe(vps, device_probe(device, key, hostname, "copy"))
