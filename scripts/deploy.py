@@ -86,8 +86,22 @@ async def wait_for_version(slug: str, want: str, timeout: int = 1500) -> None:
     raise TimeoutError(f"the add-on didn't reach version {want}")
 
 
+async def wait_for_supervisor(timeout: int = 900) -> None:
+    """After a boot Core answers before the Supervisor leaves "startup", and it refuses updates until then."""
+    for _ in range(timeout // 10):
+        try:
+            async with HA() as ha:
+                if (await ha.supervisor("/info"))["state"] == "running":
+                    return
+        except (HAError, OSError):
+            pass
+        await asyncio.sleep(10)
+    raise TimeoutError("the Supervisor didn't reach the running state")
+
+
 async def install() -> None:
     want = local_version()
+    await wait_for_supervisor()
     async with HA() as ha:
         slug = await addon_slug(ha)
         try:
@@ -102,6 +116,8 @@ async def install() -> None:
         try:
             await ha.supervisor(f"/store/addons/{slug}/update", "post", timeout=1800)
         except HAError as err:
+            if "blocked" in str(err):  # refused, not started: nothing would ever finish
+                raise
             print(f"Supervisor call ended early ({err}); waiting for the build to finish")
     await wait_for_version(slug, want)
     async with HA() as ha:
