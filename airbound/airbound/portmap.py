@@ -117,7 +117,8 @@ def soap_body(service: str, action: str, args: dict[str, str | int]) -> str:
     )
 
 
-async def upnp_map(session: ClientSession, gateway: str, external_port: int, internal_client: str, internal_port: int) -> int:
+async def _upnp_call(session: ClientSession, gateway: str, action: str, args: dict[str, str | int]) -> None:
+    """Find the router's WAN connection service and run one UPnP action on it."""
     search = (
         "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\n"
         "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n"
@@ -134,26 +135,30 @@ async def upnp_map(session: ClientSession, gateway: str, external_port: int, int
         if not found:
             raise PortMapError("router has no UPnP port mapping service")
         url, service = found
-        body = soap_body(
-            service,
-            "AddPortMapping",
-            {
-                "NewRemoteHost": "",
-                "NewExternalPort": external_port,
-                "NewProtocol": "TCP",
-                "NewInternalPort": internal_port,
-                "NewInternalClient": internal_client,
-                "NewEnabled": 1,
-                "NewPortMappingDescription": DESCRIPTION,
-                "NewLeaseDuration": LEASE,
-            },
-        )
-        headers = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{service}#AddPortMapping"'}
-        async with session.post(url, data=body, headers=headers, timeout=timeout) as resp:
+        headers = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{service}#{action}"'}
+        async with session.post(url, data=soap_body(service, action, args), headers=headers, timeout=timeout) as resp:
             if resp.status != 200:
                 raise PortMapError(f"router refused (UPnP HTTP {resp.status})")
     except (ClientError, TimeoutError, ElementTree.ParseError) as err:
         raise PortMapError(f"UPnP failed: {err}") from err
+
+
+async def upnp_map(session: ClientSession, gateway: str, external_port: int, internal_client: str, internal_port: int) -> int:
+    await _upnp_call(
+        session,
+        gateway,
+        "AddPortMapping",
+        {
+            "NewRemoteHost": "",
+            "NewExternalPort": external_port,
+            "NewProtocol": "TCP",
+            "NewInternalPort": internal_port,
+            "NewInternalClient": internal_client,
+            "NewEnabled": 1,
+            "NewPortMappingDescription": DESCRIPTION,
+            "NewLeaseDuration": LEASE,
+        },
+    )
     return external_port
 
 
@@ -178,6 +183,17 @@ async def open_port(session: ClientSession, gateway: str, ha_ip: str, external_p
         errors.append(f"UPnP: {err}")
     _LOGGER.info("Automatic port opening failed: %s", "; ".join(errors))
     raise PortMapError("; ".join(errors))
+
+
+async def close_port(session: ClientSession, gateway: str, external_port: int, method: str, internal_port: int = 443) -> None:
+    """Take down a mapping AirBound made, with the method that made it."""
+    try:
+        if method == "natpmp":
+            await natpmp_map(gateway, external_port, internal_port, 0)  # lifetime 0 deletes (RFC 6886)
+        else:
+            await _upnp_call(session, gateway, "DeletePortMapping", {"NewRemoteHost": "", "NewExternalPort": external_port, "NewProtocol": "TCP"})
+    except OSError as err:
+        raise PortMapError(str(err)) from err
 
 
 async def gateway_of(supervisor) -> str | None:

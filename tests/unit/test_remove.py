@@ -34,15 +34,37 @@ def test_removing_direct_mode_deletes_dns_and_lists_the_router_and_token():
     assert any("API token" in n for n in result.notes)
 
 
-def test_an_automatic_port_mapping_closes_by_itself():
-    s = Settings(mode="direct", port_mapping="upnp", router_done=True, external_port=443)
-    assert any("within an hour" in n for n in plan(s, {}, []).notes)
-    assert not any("Remove the port forward" in n for n in plan(s, {}, []).notes)
+def test_an_automatic_port_mapping_is_closed_not_left_to_the_person():
+    s = Settings(mode="direct", port_mapping="upnp", router_done=True, external_port=9443)
+    result = plan(s, {}, [])
+    assert "router" in ids(result) and result.tasks[ids(result).index("router")].label == "Close port 9443 on your router"
+    assert not any("port forward" in n for n in result.notes)
+
+
+async def test_a_router_that_doesnt_answer_leaves_the_lease_to_run_out(tmp_path, monkeypatch):
+    from airbound import portmap
+    from airbound.remove import Removal, Task
+
+    async def gateway(_supervisor):
+        return "192.168.1.1"
+
+    async def refuse(*_args):
+        raise portmap.PortMapError("no answer")
+
+    monkeypatch.setattr(portmap, "gateway_of", gateway)
+    monkeypatch.setattr(portmap, "close_port", refuse)
+    store = Store(tmp_path / "settings.json")
+    store.update(mode="direct", port_mapping="natpmp", external_port=443)
+    note = await Removal(store, None, None, None, None, None)._router(Task("router", ""))
+    assert "within an hour" in note
 
 
 def test_own_relay_server_is_left_for_the_person():
-    s = Settings(mode="relay", relay_host="203.0.113.25")
-    assert any("203.0.113.25" in n and "hosting provider" in n for n in plan(s, {}, []).notes)
+    s = Settings(mode="relay", relay_host="203.0.113.25", tls="cloudflare", cloudflare_token="t", zone_id="z", hostname="h", domain="example.com")
+    result = plan(s, {}, [])
+    assert "dns" in ids(result)  # the name points at the relay; it goes
+    relay = next(n for n in result.notes if "203.0.113.25" in n)
+    assert "hosting provider" in relay and "keys AirBound forgets" in relay and "firewall" in relay
 
 
 def test_partly_set_up_removes_only_what_was_done():

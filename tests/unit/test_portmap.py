@@ -54,3 +54,8 @@ def test_router_description_with_a_dtd_is_refused():
 
     evil = '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaa">]><root><service><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType><controlURL>/ctl</controlURL></service></root>'
     assert find_control_url(evil, "http://192.168.1.1:5000") is None
+
+
+def test_delete_port_mapping_body():
+    body = soap_body("urn:svc", "DeletePortMapping", {"NewRemoteHost": "", "NewExternalPort": 9443, "NewProtocol": "TCP"})
+    assert '<u:DeletePortMapping xmlns:u="urn:svc"><NewRemoteHost></NewRemoteHost><NewExternalPort>9443</NewExternalPort>' in body

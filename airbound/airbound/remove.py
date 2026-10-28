@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 
 from aiohttp import ClientSession
 
-from . import ha_settings, hosted, users
+from . import ha_settings, hosted, portmap, users
 from .caddy import Caddy
 from .cloudflare import Cloudflare
 from .mqtt import ENTITIES, Mqtt, entity_id
@@ -50,6 +50,8 @@ def plan(s: Settings, http: dict, people: list[dict]) -> Plan:
         tasks.append(Task("users", "Let out the people AirBound limited to the home network"))
     if s.tls == "cloudflare" and s.cloudflare_token and s.zone_id and s.fqdn:
         tasks.append(Task("dns", f"Delete {s.fqdn} from Cloudflare"))
+    if s.port_mapping:
+        tasks.append(Task("router", f"Close port {s.external_port} on your router"))
     if s.hosted_key:
         tasks.append(Task("hosted", "Unlink this Home Assistant from airbound.dev"))
     tasks.append(Task("sensors", "Remove AirBound's device, sensors and notifications"))
@@ -58,12 +60,15 @@ def plan(s: Settings, http: dict, people: list[dict]) -> Plan:
     tasks.append(Task("forget", "Forget AirBound's settings and keys"))
 
     notes = result.notes
-    if s.port_mapping:
-        notes.append(f"Your router closes port {s.external_port} by itself within an hour, now that AirBound stops renewing it.")
-    elif s.mode == "direct" and (s.router_done or s.live):
+    if s.mode == "direct" and not s.port_mapping and (s.router_done or s.live):
         notes.append(f"Remove the port forward for TCP port {s.external_port} from your router.")
     if s.mode == "relay" and s.relay_host:
-        notes.append(f"Your relay server {s.relay_host} keeps running. Delete it at your hosting provider so it stops costing money.")
+        notes.append(
+            f"Your relay server {s.relay_host} keeps running, and costs money until you delete it at your hosting provider. "
+            "Nobody can use the relay without the keys AirBound forgets now. If you keep the server for something else, "
+            "AirBound's set-up stays on it: the relay, a firewall, SSH with keys only "
+            "and automatic security updates."
+        )
     if s.cloudflare_token:
         notes.append("Delete the API token you made for AirBound in Cloudflare: My Profile → API Tokens.")
     if s.mode == "hosted" or s.hosted_key:
@@ -160,6 +165,19 @@ class Removal:
             task.detail = str(err)
             return f"Delete the DNS records for {s.fqdn} (A and CAA) in Cloudflare."
         task.detail = f"{count} DNS record{'s' if count != 1 else ''} deleted"
+        return None
+
+    async def _router(self, task: Task) -> str | None:
+        s = self._store.settings
+        try:
+            gateway = await portmap.gateway_of(self._supervisor)
+            if not gateway:
+                raise portmap.PortMapError("no router address")
+            await portmap.close_port(self._session, gateway, s.external_port, s.port_mapping)
+        except portmap.PortMapError as err:
+            task.detail = f"The router didn't answer ({err})"
+            return f"Your router closes port {s.external_port} by itself within an hour, now that AirBound stops renewing it."
+        task.detail = f"Port {s.external_port} closed"
         return None
 
     async def _hosted(self, task: Task) -> str | None:

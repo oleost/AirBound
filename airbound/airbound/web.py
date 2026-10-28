@@ -333,6 +333,12 @@ class Panel:
             # A new address has to go live again: new DNS record and certificate.
             await self._caddy.stop()
             self._store.update(live=False)
+            if settings.tls == "cloudflare" and settings.fqdn and settings.zone_id:
+                # The old name would point at this home forever; nothing else cleans it up.
+                try:
+                    await Cloudflare(self._session, settings.cloudflare_token).delete_records(settings.zone_id, settings.fqdn)
+                except CloudflareError as err:
+                    _LOGGER.warning("Couldn't delete the old DNS records for %s: %s", settings.fqdn, err)
         self._store.update(domain=body["name"], zone_id=body["id"], hostname=hostname, tls="cloudflare")
         return web.json_response({"settings": self._store.settings.public()})
 
