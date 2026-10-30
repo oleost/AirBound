@@ -294,6 +294,13 @@ async def test_github_sync_sets_access_for_github_accounts_only(tmp_path, monkey
     assert db.account("u1").entitled
 
 
+def test_sponsor_list_needs_only_read_user():
+    from airbound_relay.github import SPONSORS_QUERY
+
+    # GitHub refuses the whole query for a read:user token if it asks for an organization's id
+    assert "Organization" not in SPONSORS_QUERY
+
+
 def test_join_and_manage_links_follow_the_account():
     config = Config(domain="airbound.dev", tier_id=TIER, github_sponsorable="oleost")
     assert config.join_url_for("gh:42") == "https://github.com/sponsors/oleost"

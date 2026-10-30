@@ -35,7 +35,7 @@ def test_restored_hosted_setup_waits_for_confirmation_then_asks_for_patreon(serv
         page.route("**/api/**", handle)
         page.goto(server + "#overview")  # an old link must not skip the question
         page.get_by_role("heading", name="AirBound was restored from a backup").wait_for()
-        assert page.get_by_text("airbound.dev asks for your Patreon login again", exact=False).is_visible()
+        assert page.get_by_text("airbound.dev asks for your Patreon or GitHub login again", exact=False).is_visible()
         assert page.get_by_text("Turn the old Home Assistant off first", exact=False).is_visible()
         assert not fake["confirmed"] and not fake["went_live"]
         page.get_by_role("button", name="Continue on this Home Assistant").click()

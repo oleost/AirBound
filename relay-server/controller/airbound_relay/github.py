@@ -2,6 +2,8 @@
 
 GitHub accounts are stored as "gh:<GitHub user id>", next to Patreon's plain ids.
 Access needs an active monthly sponsorship of at least `github_min_cents`.
+Only people can log in, so the sponsor list leaves out organizations; reading
+their ids would also need the broader read:org scope.
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ query($sponsorable: String!, $after: String) {
       nodes {
         isOneTimePayment
         tier { monthlyPriceInCents isOneTime }
-        sponsorEntity { ... on User { databaseId } ... on Organization { databaseId } }
+        sponsorEntity { ... on User { databaseId } }
       }
     }
   }

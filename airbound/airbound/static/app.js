@@ -277,7 +277,7 @@ steps.welcome = () =>
     <div class="card">
       <h2>You'll need one of these</h2>
       <ul class="plain">
-        <li><b>The easiest:</b> support AirBound on Patreon and use the hosted relay as a thank-you. Nothing to set up, and it starts with a 7-day free trial.</li>
+        <li><b>The easiest:</b> support AirBound on Patreon or GitHub Sponsors and use the hosted relay as a thank-you. Nothing to set up, and Patreon starts with a 7-day free trial.</li>
         <li><b>Or do it yourself, for free:</b> your own domain on Cloudflare, plus either a small rented server or access to your router's settings.</li>
       </ul>
       <p class="muted small">Setting up takes about 5 minutes with the hosted relay, 10–15 on your own.</p>
@@ -389,7 +389,7 @@ steps.connection = () => {
       "Easiest",
       [
         'Nothing to set up: no domain, no server and no router changes. You get an easy address like <span class="mono">otter-comet-maple.airbound.dev</span>.',
-        "Comes with supporting AirBound on Patreon. It starts with a 7-day free trial, and you can cancel any time.",
+        "Comes with supporting AirBound on Patreon (7-day free trial) or GitHub Sponsors ($1 a month). You can cancel any time.",
         'AirBound is a hobby project: the relay is best effort, with no guarantee of uptime. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Terms</a>',
         "The relay can't read anything. The traffic stays encrypted all the way to your home, and the certificate is made by your own Home Assistant.",
       ],
@@ -482,7 +482,7 @@ steps.hosted = () => {
         <h2>2. Check the code</h2>
         <p>The page shows a code. It must be the same as this one:</p>
         <div class="code-box">${esc(h.code)}</div>
-        <h2>3. Log in with Patreon</h2>
+        <h2>3. Log in with Patreon or GitHub</h2>
         ${
           h.state === "needs_membership"
             ? (h.join_url || "").includes("github.com")
@@ -508,14 +508,14 @@ steps.hosted = () => {
         ${h.state === "expired" ? '<div class="notice warn"><p>The link expired before the login finished. Start again.</p></div>' : ""}
         ${
           state.settings.tls === "hosted" && state.settings.fqdn
-            ? `<div class="notice info"><p>Log in with the same Patreon account as before, and this Home Assistant keeps <b>${esc(state.settings.fqdn)}</b>.</p></div>`
+            ? `<div class="notice info"><p>Log in with the same Patreon or GitHub account as before, and this Home Assistant keeps <b>${esc(state.settings.fqdn)}</b>.</p></div>`
             : ""
         }
-        <p>You log in with Patreon on AirBound's website. New members start with a 7-day free trial on Patreon, and you can cancel any time.</p>
-        <div class="notice info"><p><b>A hobby project, not a company.</b> Patreon support pays for AirBound's development, and the relay comes with it as a thank-you. It's run on a best-effort basis, with no guarantee of uptime and no liability if it's down, so don't rely on it for alarms or anything safety-related. You can switch to your own server or router at any time. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Read the terms</a></p></div>
-        <p class="muted small">AirBound only learns your Patreon member id and whether the membership includes the relay, never your name, email address or card.</p>
+        <p>On AirBound's website, you log in with Patreon or GitHub. New Patreon members start with a 7-day free trial, GitHub Sponsors starts at $1 a month, and you can cancel any time.</p>
+        <div class="notice info"><p><b>A hobby project, not a company.</b> Your support pays for AirBound's development, and the relay comes with it as a thank-you. It's run on a best-effort basis, with no guarantee of uptime and no liability if it's down, so don't rely on it for alarms or anything safety-related. You can switch to your own server or router at any time. <a href="https://airbound.dev/terms" target="_blank" rel="noopener">Read the terms</a></p></div>
+        <p class="muted small">AirBound only learns your Patreon or GitHub user id and whether your support includes the relay, never your name, email address or card.</p>
         ${errorBox(view.error)}
-        <div class="actions"><button class="primary" data-action="hosted-start" ${view.busy ? "disabled" : ""}>${view.busy ? '<span class="spinner"></span> Starting…' : "Log in with Patreon"}</button></div>
+        <div class="actions"><button class="primary" data-action="hosted-start" ${view.busy ? "disabled" : ""}>${view.busy ? '<span class="spinner"></span> Starting…' : "Log in with Patreon or GitHub"}</button></div>
       </div>`;
   return frame(
     "hosted",
@@ -824,7 +824,7 @@ steps.overview = () => {
       <h2 style="margin-top:0">Moving or reinstalling Home Assistant</h2>
       <p>Restore a Home Assistant backup that includes the AirBound app. ${
         s.mode === "hosted"
-          ? "Your address stays the same after a Patreon login, because a backup alone never moves an airbound.dev address. Without the backup, the new Home Assistant gets a new address, and every phone needs it."
+          ? "Your address stays the same after a Patreon or GitHub login, because a backup alone never moves an airbound.dev address. Without the backup, the new Home Assistant gets a new address, and every phone needs it."
           : s.mode === "relay"
             ? "Your relay server keeps working with it. Without the backup, you run the new install command on the server again."
             : "Afterwards, the router step checks that the port forward points to the new machine. Without the backup, pick Choose my own name under Your domain and type the current name, so the address stays the same."
@@ -931,7 +931,7 @@ steps.restored = () => {
     );
   if (s.mode === "hosted")
     items.push(
-      `<li><b>airbound.dev asks for your Patreon login again.</b> Your address ${esc(s.fqdn)} stays the same. A backup alone is never enough to use it, in case a copy ends up somewhere it shouldn't.</li>`
+      `<li><b>airbound.dev asks for your Patreon or GitHub login again.</b> Your address ${esc(s.fqdn)} stays the same. A backup alone is never enough to use it, in case a copy ends up somewhere it shouldn't.</li>`
     );
   if (s.mode === "relay") items.push(`<li><b>Your relay server</b> ${esc(s.relay_host)} accepts this Home Assistant as before.</li>`);
   return solo(

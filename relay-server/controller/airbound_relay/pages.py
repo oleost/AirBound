@@ -47,11 +47,14 @@ def page(title: str, body: str, config: Config) -> str:
 
 def home(config: Config) -> str:
     supporters = "Supporters on Patreon or GitHub Sponsors" if config.github_sponsors else "Supporters on Patreon"
+    trial = "New supporters on Patreon get a 7-day free trial." if config.github_sponsors else "New supporters get a 7-day free trial."
+    github_button = f'<a class="button secondary" href="{escape(config.github_sponsor_url)}">Support on GitHub</a>' if config.github_sponsors else ""
     return f"""<div class="card"><h1>Secure remote access for Home Assistant</h1>
 <p>AirBound gives your Home Assistant its own secure web address that works in the Companion app and any browser, without a VPN and without opening ports on your router.</p>
-<p>AirBound is a free, open-source hobby project, made by one person in their spare time. {supporters} help pay for its development and get access to this hosted relay as a thank-you. Install the AirBound add-on in Home Assistant, choose <b>AirBound hosted relay</b>, and it walks you through the rest. New supporters get a 7-day free trial.</p>
+<p>AirBound is a free, open-source hobby project, made by one person in their spare time. {supporters} help pay for its development and get access to this hosted relay as a thank-you. Install the AirBound add-on in Home Assistant, choose <b>AirBound hosted relay</b>, and it walks you through the rest. {trial}</p>
 <a class="button" href="https://github.com/oleost/AirBound">Get the add-on</a>
-<a class="button secondary" href="{escape(config.join_url)}">Support on Patreon</a></div>
+<a class="button secondary" href="{escape(config.join_url)}">Support on Patreon</a>
+{github_button}</div>
 <div class="card"><h2>Please read before you join</h2>
 <p>The relay is offered as is, on a best-effort basis, with no guarantee that it's always up and no liability if it isn't. Don't rely on it for anything where an outage could cause harm, such as alarms or safety equipment. The add-on also works with your own server or router, so you can always move. <a href="/terms">Read the terms</a>.</p></div>
 <div class="card"><h2>What the relay can and can't see</h2><ul>
@@ -77,7 +80,7 @@ def privacy(config: Config) -> str:
 <p>Unlinking a Home Assistant or ending your membership removes access; ask on GitHub to have your data deleted sooner.</p></div>"""
 
 
-TERMS_UPDATED = "28 October 2026"
+TERMS_UPDATED = "30 October 2026"
 
 
 def terms(config: Config) -> str:

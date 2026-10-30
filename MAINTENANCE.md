@@ -16,7 +16,7 @@ from a commit to users and the live relay.
 | GitHub Actions | Each workflow, by commit SHA | Dependabot |
 | Relay server OS (Debian) | Not pinned: unattended security updates, restart at 04:30 when one needs it | Maintenance report (relay health) |
 | Home Assistant | Not ours; changes monthly, with a beta about a week before | Maintenance report, test VM, beta VM |
-| Secrets | `/etc/airbound-controller` on the relay; repository secret `OPS_TOKEN` | Patreon's creator token refreshes itself; the Cloudflare and GitHub tokens have their own expiry |
+| Secrets | `/etc/airbound-controller` on the relay; repository secret `OPS_TOKEN` | Patreon's creator token refreshes itself; the Cloudflare token and the GitHub token for the sponsor list (`read:user`, in `github.env`) have their own expiry |
 
 ## What watches automatically (every Monday)
 
