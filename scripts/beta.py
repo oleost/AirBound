@@ -30,6 +30,7 @@ import urllib.error
 import urllib.request
 
 import aiohttp
+import websockets
 
 from testenv import ROOT, begin_run, env, run, save_result, ssh
 
@@ -129,7 +130,7 @@ async def update(part: str) -> str:
             raise
         # An OS update that is downloaded but not active yet: the Supervisor waits for a reboot.
         await supervisor("/host/reboot", "post", timeout=60)
-    except OSError:
+    except (OSError, websockets.ConnectionClosed):
         pass  # Core and OS restart under us; the update carries on
     for _ in range(180):
         await asyncio.sleep(10)
