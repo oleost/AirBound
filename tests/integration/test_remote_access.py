@@ -47,6 +47,52 @@ async def test_login_with_mfa_works_remotely_and_ha_sees_real_ip(external, users
     assert ips == {my_ip_towards_vm()}, ips
 
 
+async def test_unknown_app_is_stopped_until_allowed(external, panel):
+    """A login for another site's client_id: real HA, real proxy, and the switch in the panel."""
+    site = "https://airbound-test.invalid/"
+    body = {"client_id": site, "handler": ["homeassistant", None], "redirect_uri": f"{site}callback"}
+
+    async def start():
+        async with external.post(f"{EXTERNAL_URL}/auth/login_flow", json=body) as resp:
+            return resp.status, await resp.json()
+
+    status, answer = await start()
+    assert status == 403, answer
+    assert site in answer["message"] and "Allowed apps" in answer["message"]
+    assert site in [b["client"] for b in (await panel.get("api/clients"))["blocked"]]
+
+    # Allowed, it reaches Home Assistant, which then checks the app's address itself.
+    try:
+        clients = await panel.post("api/clients/allow", {"client": site})
+        assert site in [a["client"] for a in clients["allowed"]]
+        assert site not in [b["client"] for b in clients["blocked"]]
+        _, answer = await start()
+        assert "AirBound" not in str(answer), answer
+    finally:
+        await panel.post("api/clients/remove", {"client": site})
+
+    await panel.post("api/settings", {"restrict_clients": False})
+    try:
+        _, answer = await start()
+        assert "AirBound" not in str(answer), answer
+    finally:
+        await panel.post("api/settings", {"restrict_clients": True})
+
+
+async def test_official_app_can_still_log_in(external, users):
+    account = users["mfa"]
+    flow = LoginFlow(external, EXTERNAL_URL)
+    flow.client_id = "https://home-assistant.io/iOS"
+    async with external.post(
+        f"{EXTERNAL_URL}/auth/login_flow",
+        json={"client_id": flow.client_id, "handler": ["homeassistant", None], "redirect_uri": "homeassistant://auth-callback"},
+    ) as resp:
+        assert resp.status == 200, await resp.text()
+        started = await resp.json()
+    result = await flow.step(started["flow_id"], {"username": account["username"], "password": account["password"]})
+    assert result.get("step_id") in ("select_mfa_module", "mfa"), result
+
+
 async def test_unknown_hostname_is_dropped(external):
     with pytest.raises(aiohttp.ClientError):
         async with external.get("https://not-the-hostname.airbound.test/api/"):

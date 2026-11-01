@@ -97,6 +97,7 @@ const enter = {
     poll(async () => {
       view.status = await api("status");
       view.bans = (await api("bans")).bans;
+      view.clients = await api("clients");
       render();
     }, 15000),
 };
@@ -756,6 +757,60 @@ steps.devices = () => {
   );
 };
 
+// Which apps may log in from outside: this address and the official apps always, others once allowed.
+function clientRow(c, buttons) {
+  return `<div class="row"><div class="grow">${c.name ? `<b>${esc(c.name)}</b><div class="mono small">${esc(c.client)}</div>` : `<span class="mono">${esc(c.client)}</span>`}
+    ${c.count ? `<div class="muted small">Tried ${esc(c.count)} time${c.count === 1 ? "" : "s"}, last ${esc(new Date(c.last).toLocaleString())}</div>` : ""}</div>${buttons}</div>`;
+}
+
+function allowedAppsCard() {
+  const c = view.clients;
+  if (!c) return "";
+  const asking = view.confirmClient;
+  const blocked = c.blocked
+    .map((b) =>
+      asking === b.client
+        ? `${clientRow(b, "")}
+           <div class="notice warn"><p><b>Did you just try to connect this app yourself?</b> Allowed apps can receive a login from you. Anyone who knows your address can make a name show up in this list, so allow it only if you started this.</p>
+           <div class="actions"><button class="primary" data-action="client-allow" data-client="${esc(b.client)}">Yes, I started this: allow it</button><button class="link" data-action="client-ask-no">Cancel</button></div></div>`
+        : clientRow(b, `<button data-action="client-ask" data-client="${esc(b.client)}">Allow…</button>`)
+    )
+    .join("");
+  const list = `<div class="list">
+      ${c.official.map((a) => clientRow(a, '<span class="pill muted">Always allowed</span>')).join("")}
+      ${c.allowed.map((a) => clientRow(a, `<button class="link" data-action="client-remove" data-client="${esc(a.client)}">Remove</button>`)).join("")}
+    </div>`;
+  return `<div class="card" id="allowed-apps">
+    <div class="toggle-row">
+      <div>
+        <h2 style="margin:0">Allowed apps</h2>
+        <div class="muted small">Stops logins from outside for apps you haven't approved. Recommended.</div>
+      </div>
+      <label class="switch" style="margin:0"><input type="checkbox" data-action="toggle-clients" ${c.enabled ? "checked" : ""} aria-label="Only let allowed apps log in from outside"><span></span></label>
+    </div>
+    ${
+      view.confirmClientsOff
+        ? `<div class="notice bad"><p><b>Turn this off?</b> A link to your real login page could then send your login to any other site, even with two-step login, if you log in there. Allowing the one app you need is safer.</p><div class="actions"><button data-action="clients-off-yes">Turn it off</button><button class="primary" data-action="clients-off-no">Keep it on</button></div></div>`
+        : ""
+    }
+    ${
+      c.enabled
+        ? `<p style="margin-top:12px">Your browser on this address and the Home Assistant apps always work, and devices that are already logged in stay logged in. Other apps and services, such as your own Alexa or Google Assistant link, have to be allowed before they can log in.</p>
+           ${blocked ? `<h3>Recently stopped</h3><div class="list">${blocked}</div>` : ""}
+           <h3>Allowed</h3>
+           ${list}
+           <label for="client-address">Add an app by its web address</label>
+           <div class="actions" style="margin-top:4px">
+             <input type="text" id="client-address" data-action="type-client" value="${esc(view.clientDraft || "")}" placeholder="https://pitangui.amazon.com/" autocomplete="off" spellcheck="false">
+             <button data-action="client-add">Allow</button>
+           </div>
+           <p class="muted small">The easiest way: try to connect the app, then allow it under Recently stopped here. The service's own setup guide also names this address, usually as its client ID.</p>
+           ${errorBox(view.clientError)}`
+        : `<div class="notice warn" style="margin-top:12px"><p>Any app or website can ask you to log in through your address. Check the name on the login page before you log in.</p></div>`
+    }
+  </div>`;
+}
+
 // After setup: one place that shows how everything is set up, with a way to change each part.
 steps.overview = () => {
   const s = state.settings;
@@ -820,6 +875,7 @@ steps.overview = () => {
           </div>`
         : ""
     }
+    ${allowedAppsCard()}
     <div class="card">
       <h2 style="margin-top:0">Moving or reinstalling Home Assistant</h2>
       <p>Restore a Home Assistant backup that includes the AirBound app. ${
@@ -1168,6 +1224,57 @@ const actions = {
   async "mfa-off-yes"() {
     state.settings = (await api("settings", { require_mfa: false })).settings;
     view.confirmMfaOff = false;
+    render();
+  },
+  async "toggle-clients"(el) {
+    if (!el.checked) {
+      el.checked = true;
+      view.confirmClientsOff = true;
+      return render();
+    }
+    await api("settings", { restrict_clients: true });
+    view.clients = await api("clients");
+    render();
+  },
+  async "clients-off-yes"() {
+    await api("settings", { restrict_clients: false });
+    view.clients = await api("clients");
+    view.confirmClientsOff = false;
+    render();
+  },
+  "clients-off-no"() {
+    view.confirmClientsOff = false;
+    render();
+  },
+  "client-ask"(el) {
+    view.confirmClient = el.dataset.client;
+    render();
+  },
+  "client-ask-no"() {
+    view.confirmClient = null;
+    render();
+  },
+  async "client-allow"(el) {
+    view.clients = await api("clients/allow", { client: el.dataset.client });
+    view.confirmClient = null;
+    render();
+  },
+  "type-client"(el) {
+    view.clientDraft = el.value;
+  },
+  async "client-add"() {
+    view.clientError = "";
+    try {
+      view.clients = await api("clients/allow", { client: document.getElementById("client-address").value });
+      view.clientDraft = "";
+      document.getElementById("client-address").value = "";
+    } catch (e) {
+      view.clientError = e.message;
+    }
+    render();
+  },
+  async "client-remove"(el) {
+    view.clients = await api("clients/remove", { client: el.dataset.client });
     render();
   },
   async unban(el) {

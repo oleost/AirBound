@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from playwright.async_api import async_playwright
@@ -38,6 +39,19 @@ async def test_user_without_mfa_sees_what_to_do(page, users):
     text = await alert.inner_text()
     assert "two-step verification (MFA)" in text
     assert "Security" in text
+
+
+async def test_link_for_another_site_says_what_happened(page):
+    site = "https://airbound-test.invalid/"
+    query = urlencode({"response_type": "code", "client_id": site, "redirect_uri": f"{site}callback"})
+    await page.goto(f"{EXTERNAL_URL}/auth/authorize?{query}", wait_until="networkidle")
+    alert = page.locator("ha-alert[alert-type=error]")
+    await alert.wait_for(timeout=10_000)
+    SCREENSHOTS.mkdir(exist_ok=True)
+    await page.screenshot(path=SCREENSHOTS / "login_stopped_unknown_app.png")
+    text = await alert.inner_text()
+    assert site in text and "Allowed apps" in text
+    assert await page.locator("input#password").count() == 0
 
 
 async def test_user_with_mfa_is_asked_for_code(page, users):

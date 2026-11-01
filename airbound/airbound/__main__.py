@@ -76,7 +76,12 @@ async def main() -> None:
         if event == "failed":
             log_failed_login(info["ip"], info["path"], info["user_agent"])
 
-    guard = AuthGuard(f"http://{ha_upstream}", require_mfa=lambda: store.settings.require_mfa, listener=on_guard_event)
+    guard = AuthGuard(
+        f"http://{ha_upstream}",
+        require_mfa=lambda: store.settings.require_mfa,
+        listener=on_guard_event,
+        allowed_clients=lambda: store.settings.allowed_clients if store.settings.restrict_clients else None,
+    )
     golive = GoLive(store, caddy, frpc, session, ha_upstream)
     removal = Removal(store, supervisor, session, caddy, frpc, broker)
     panel = Panel(store, supervisor, session, caddy, frpc, crowdsec, certwatch, guard, golive, removal, ha_upstream)

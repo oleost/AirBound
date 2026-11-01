@@ -18,12 +18,13 @@ from .certwatch import CertWatch
 from .cloudflare import Cloudflare, CloudflareError
 from .crowdsec import CrowdSec
 from .golive import GoLive, start_saved
-from .guard import AuthGuard
+from .guard import OFFICIAL_APPS, AuthGuard, client_name, normalize_client
 from .remove import Removal
 from .settings import ALL_STEPS, COMMON_HOSTNAMES, Store, random_hostname, valid_hostname
 from .supervisor import Supervisor
 
 INGRESS_PROXY = "172.30.32.2"
+MAX_ALLOWED_CLIENTS = 50
 _LOGGER = logging.getLogger(__name__)
 _refused_remotes: set[str] = set()
 STATIC = Path(__file__).parent / "static"
@@ -124,6 +125,9 @@ class Panel:
         r.add_get("/api/status", self.status)
         r.add_get("/api/bans", self.bans)
         r.add_post("/api/bans/unban", self.unban)
+        r.add_get("/api/clients", self.clients)
+        r.add_post("/api/clients/allow", self.clients_allow)
+        r.add_post("/api/clients/remove", self.clients_remove)
         r.add_post("/api/settings", self.update_settings)
         r.add_post("/api/pause", self.pause)
         r.add_get("/api/remove", self.remove_progress)
@@ -479,11 +483,43 @@ class Panel:
         await self._crowdsec.unban(ip)
         return await self.bans(request)
 
+    async def clients(self, _request: web.Request) -> web.Response:
+        """Which apps may log in from outside, and which were stopped lately (newest first)."""
+        settings = self._store.settings
+        return web.json_response(
+            {
+                "enabled": settings.restrict_clients,
+                "official": [{"client": c, "name": name} for c, name in OFFICIAL_APPS.items()],
+                "allowed": [{"client": c, "name": client_name(c)} for c in settings.allowed_clients],
+                "blocked": list(reversed(self._guard.blocked.values())),
+            }
+        )
+
+    async def clients_allow(self, request: web.Request) -> web.Response:
+        body = await request.json()
+        client = normalize_client((body.get("client") or "").strip() if isinstance(body.get("client"), str) else None)
+        if client is None:
+            return web.json_response({"error": "Enter the app's web address, for example https://pitangui.amazon.com/."}, status=400)
+        allowed = tuple(self._store.settings.allowed_clients)
+        if client not in allowed and client not in OFFICIAL_APPS:
+            if len(allowed) >= MAX_ALLOWED_CLIENTS:
+                return web.json_response({"error": f"AirBound keeps at most {MAX_ALLOWED_CLIENTS} apps. Remove one you no longer use first."}, status=400)
+            self._store.update(allowed_clients=(*allowed, client))
+        self._guard.blocked.pop(client, None)
+        return await self.clients(request)
+
+    async def clients_remove(self, request: web.Request) -> web.Response:
+        client = (await request.json()).get("client")
+        self._store.update(allowed_clients=tuple(c for c in self._store.settings.allowed_clients if c != client))
+        return await self.clients(request)
+
     async def update_settings(self, request: web.Request) -> web.Response:
         body = await request.json()
         changes = {}
         if "require_mfa" in body:
             changes["require_mfa"] = bool(body["require_mfa"])
+        if "restrict_clients" in body:
+            changes["restrict_clients"] = bool(body["restrict_clients"])
         if body.get("tls") in ("cloudflare", "internal"):  # "internal" is for automated tests only
             changes["tls"] = body["tls"]
         if "domain" in body and "hostname" in body and body.get("tls") == "internal":

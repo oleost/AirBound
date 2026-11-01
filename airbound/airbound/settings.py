@@ -60,6 +60,8 @@ class Settings:
     cloudflare_token: str = ""
     tls: str = "cloudflare"  # "hosted": certificate through the hosted relay; "internal": self-signed, for tests
     require_mfa: bool = True
+    restrict_clients: bool = True  # only known apps may log in from outside (guard.py)
+    allowed_clients: tuple[str, ...] = ()  # apps the person allowed, besides this address and the official apps
     wizard_step: str = "welcome"
     live: bool = False
     public_ip: str = ""
