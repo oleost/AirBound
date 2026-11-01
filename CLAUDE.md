@@ -10,6 +10,7 @@ plus the relay server behind the hosted service at airbound.dev
 - **English everywhere** in the repository: code, comments, docs, commit messages, UI text.
 - **Branches:** work on `next` only. `main` is what users' Home Assistants follow and moves only through `scripts/release.py`, which Claude runs when the maintainer asks for a release. Never push to `main` directly.
 - **Privacy:** this repository is public. Before every push, scan the staged diff for private addresses, hostnames, tokens and names. Private values belong in `.env` (gitignored, listed in `scripts/testenv.py`) or on the relay under `/etc/airbound-controller`, never in the repository. `test-results/` is gitignored because screenshots show real addresses.
+- **Changelog:** every version bump gets an entry at the top of `airbound/CHANGELOG.md`, which Home Assistant shows with the update. Write for the person updating: what changed for them and anything they have to do, not how it was built. A unit test refuses a version without one.
 - **Commits** use the repository's GitHub noreply identity (set in the repo-local git config).
 - **Files:** LF line endings (enforced by `.gitattributes`; `relay_install.sh` breaks with CRLF). Read and write text with `encoding="utf-8"` explicitly, since the Windows default is cp1252.
 - **The add-on UI is the documentation.** The panel is a guided wizard: every step says what to do and why, locked steps say what they wait for. A feature that needs reading docs to set up isn't finished.

@@ -60,6 +60,7 @@ push to next ──▶ pre-push hook: unit, relay and browser tests (a failure s
 ```
 
 - **Branches:** `next` is development and testing. The test VM follows it (`https://github.com/oleost/AirBound#next`). `main` is what users get: everyone who added the repository without a branch name follows it. Home Assistant keeps the branch it cloned, so `main` must stay the users' branch. A release fast-forwards `main` to a tested commit on `next`. The images for that version already exist, so users never see an update whose image is still building. Work happens on `next`, never directly on `main`.
+- **Changelog:** Home Assistant shows `airbound/CHANGELOG.md` with an update. Every version bump adds an entry at the top, written for the person updating; `tests/unit/test_changelog.py` fails without one, so the push is refused.
 - **Pushes:** `.githooks/pre-push` runs the unit, relay and browser tests and refuses the push when one fails. A clone enables it once with `git config core.hooksPath .githooks`.
 - **A result belongs to one commit:** `e2e.py`, `beta.py` and `relay_staging.py` note the commit when they start and refuse to start with uncommitted or unpushed changes (the VMs install from GitHub). A run during which HEAD or the files changed is saved as failed, so `release.py` can't take it for a commit it didn't test. Commit and push first, then start the run, and don't commit while it runs.
 - **Test round** (`scripts/e2e.py`, about 20 minutes; the test environment's private addresses go in `.env`, listed in `scripts/testenv.py`):
