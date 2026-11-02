@@ -9,7 +9,7 @@ RUN xcaddy build \
 
 FROM crowdsecurity/crowdsec:v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880670c62f2755ced17524107f71a AS crowdsec
 
-FROM python:3.13.18-alpine3.24@sha256:bbc0290146ebe0a8b9a8ed07d3f2c7bdeb4d917fc93300a4e47490c8b5a11b48 AS frpc
+FROM python:3.13.18-alpine3.24@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8 AS frpc
 ARG BUILD_ARCH=amd64
 ARG FRP_VERSION=0.71.1
 # frp built from source with the newest Go by .github/workflows/frp.yaml
@@ -24,7 +24,7 @@ RUN case "$BUILD_ARCH" in \
     && tar -xzf /tmp/frp.tgz -C /tmp \
     && mv /tmp/frp_${FRP_VERSION}_linux_${ARCH}/frpc /usr/local/bin/frpc
 
-FROM python:3.13.18-alpine3.24@sha256:bbc0290146ebe0a8b9a8ed07d3f2c7bdeb4d917fc93300a4e47490c8b5a11b48
+FROM python:3.13.18-alpine3.24@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8
 ARG BUILD_VERSION=dev
 ENV AIRBOUND_VERSION=$BUILD_VERSION
 COPY --from=caddy-build /usr/bin/caddy /usr/local/bin/caddy
