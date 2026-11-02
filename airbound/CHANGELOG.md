@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.2
+
+- Security updates to the parts AirBound is built on: frp, Caddy with its CrowdSec bouncer, CrowdSec and the Python base image. There is nothing you have to do.
+- **If you run your own relay server:** run the install command from AirBound again to get the updated frp.
+
 ## 0.15.1
 
 - This changelog: Home Assistant now shows what is new when AirBound has an update.

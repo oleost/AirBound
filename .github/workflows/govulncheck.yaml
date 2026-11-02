@@ -19,8 +19,8 @@ permissions:
 
 env:
   FRP_VERSION: "0.71.1"
-  FRP_RELEASE: "frp-v0.71.1-airbound1"  # our own build, what the relays run
-  FRP_SHA256: "5b054d744c4661bb87eae2eae2a88b2a930fb1fece50e4324c9f2ab9439e357f"  # linux_amd64
+  FRP_RELEASE: "frp-v0.71.1-airbound2"  # our own build, what the relays run
+  FRP_SHA256: "280822e2c51637d4f4c93fab510bc57fcf9063d1478b4b7adf6eeb5cdbc554e6"  # linux_amd64
 
 jobs:
   govulncheck:

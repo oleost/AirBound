@@ -15,7 +15,7 @@ set -eu
 
 FRP_VERSION="0.71.1"
 # frp built from source with the newest Go by .github/workflows/frp.yaml (see why there).
-FRP_RELEASE="frp-v0.71.1-airbound1"
+FRP_RELEASE="frp-v0.71.1-airbound2"
 CADDY_VERSION="2.11.7"
 HERE=$(cd "$(dirname "$0")" && pwd)
 
@@ -29,12 +29,12 @@ HARDEN="$HERE/../airbound/airbound/vps_harden.sh"  # shared with the personal re
 case "$(uname -m)" in
   x86_64 | amd64)
     ARCH=amd64
-    FRP_SHA=5b054d744c4661bb87eae2eae2a88b2a930fb1fece50e4324c9f2ab9439e357f
+    FRP_SHA=280822e2c51637d4f4c93fab510bc57fcf9063d1478b4b7adf6eeb5cdbc554e6
     CADDY_SHA=a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
     ;;
   aarch64 | arm64)
     ARCH=arm64
-    FRP_SHA=74fd646005fe79be5033d91a92ffb3e0694dd1497f9170eaeafcf7bcbc4a1790
+    FRP_SHA=8ddeff2ca3d4236e75c96e66a5178881582b5d59c32ee48b7ecb214a9e39beaa
     CADDY_SHA=3db36ba90c7a6e8dda40ee3dd71fa08844c76b5fb08f61b31e5e78d2ed38e71c51dc7baed875e50d1ca1279196e84302967237386ae87c91ae9f2aaceada682e
     ;;
   *) fail "unsupported processor: $(uname -m)" ;;
