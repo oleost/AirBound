@@ -7,7 +7,7 @@ RUN xcaddy build \
     --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@v5.4.0 \
     --output /usr/bin/caddy
 
-FROM crowdsecurity/crowdsec:v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880670c62f2755ced17524107f71a AS crowdsec
+FROM crowdsecurity/crowdsec:v1.8.2@sha256:65b74942f7e7ed5c60fde4ac15fc4ba715904c398c8b16dd451f4907d90347d4 AS crowdsec
 
 FROM python:3.13.18-alpine3.24@sha256:bbc0290146ebe0a8b9a8ed07d3f2c7bdeb4d917fc93300a4e47490c8b5a11b48 AS frpc
 ARG BUILD_ARCH=amd64
