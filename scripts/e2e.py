@@ -187,13 +187,19 @@ async def own_relay() -> str:
                 logins = vps.sh("sudo journalctl -u airbound-relay --no-pager | grep -c 'new proxy'", check=False).strip()
                 if not logins or logins == "0":
                     raise RuntimeError("the relay never saw the tunnel")
+                booted = vps.reboot()
+                problem = vps.boot_problem()
+                if booted != "running" or problem:
+                    raise RuntimeError(f"after a reboot the relay server is {booted}: {problem or 'the boot did not finish'}")
+                if vps.sh("systemctl is-active airbound-relay", check=False).strip() != "active":
+                    raise RuntimeError("the relay didn't come back after a reboot")
             finally:
                 url = await ensure_hosted(p)
         await clear_own_ban(p)
         if status_code(url) != 200:
             raise RuntimeError(f"back on the hosted relay, but {url} answers {status_code(url)}")
         exposure = re.search(r"(\d+\.\d+)\s+\w+", score)  # the line ends in a smiley with a colon
-        return f"fresh VPS: installed and hardened (exposure {exposure.group(1) if exposure else '?'}), tunnel up, back on {url}"
+        return f"fresh VPS: installed and hardened (exposure {exposure.group(1) if exposure else '?'}), tunnel up, survives a reboot, back on {url}"
 
 
 SCENARIOS = [("unit", unit), ("deploy", deploy), ("hosted", hosted), ("integration", integration), ("bypass", bypass), ("own_relay", own_relay)]

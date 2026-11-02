@@ -67,15 +67,16 @@ push to next ──▶ pre-push hook: unit, relay and browser tests (a failure s
   - Deploys `next` to the test VM.
   - Checks the hosted relay end to end, and from outside that none of 11 spellings of the login path finishes a login without MFA.
   - Runs MFA enforcement with a throwaway user.
-  - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, goes back to the hosted relay, and stops the VPS.
+  - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, reboots the VPS and checks that it boots cleanly with the firewall and relay up, goes back to the hosted relay, and stops the VPS.
 - **Beta check** (`scripts/beta.py`, about 15 minutes): starts the beta VM (Home Assistant OS on the beta channel, stopped otherwise), updates the Supervisor, HA OS and Home Assistant to the newest beta, installs or updates AirBound from `next`, and runs all integration tests with a self-signed address. They include the restore test (`tests/integration/test_restore.py`): a backup of AirBound must leave out the machine key, `frpc.toml` and the logs; after restoring it the address stays off, the panel and a notification ask first, and confirming brings remote access back. The test VM skips that test, since a restore there would need a Patreon login. Then the VM is stopped.
 - **Hosted restore** (`scripts/hosted_restore.py`, about 5 minutes, needs the maintainer's Patreon login): restores a backup of AirBound on the test VM, checks that the address stays off until confirmed, links again and checks that the same address comes back. Run it when the restore or linking flow changes.
 - **Copied backup** (`scripts/copied_backup.py`, about 20 minutes, needs the maintainer's Patreon login): restores the test VM's AirBound backup on the beta VM, tries the copied key with a real frpc from the test VPS, checks that airbound.dev refuses it and the original warns, then links the test VM again. Run it when the machine check or linking changes.
-- **Relay staging** (`scripts/relay_staging.py`): installs `relay-server/` on the test VPS, then checks:
+- **Relay staging** (`scripts/relay_staging.py`): installs `relay-server/` on the Debian test VPS, set up like airbound.dev (Debian 13, ifupdown, no netplan or networkd, 1 GB), then checks:
   - that every service starts with its sandbox
   - that the frp plugin refuses fake clients
   - that a real device key is accepted from the machine that claimed it (read from frpc's environment, as the add-on does) and refused from another
   - that traffic metering reads the hub
+  - that after a reboot the boot finishes with no ordering cycles, the firewall up and every service running
 - **Relay deploy** (`scripts/relay_deploy.py`):
   1. Keeps a copy of the running relay.
   2. Installs the new one and checks the services, the website and a member's address.

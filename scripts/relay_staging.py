@@ -1,4 +1,4 @@
-"""Relay staging: install relay-server/ on the fresh test VPS before it goes near airbound.dev.
+"""Relay staging: install relay-server/ on the fresh Debian test VPS (set up like airbound.dev) before it goes near airbound.dev.
 
     python scripts/relay_staging.py
 
@@ -18,7 +18,6 @@ import json
 import re
 import secrets
 import sys
-import time
 
 from testenv import ROOT, TestVPS, begin_run, relay_tarball, save_result
 
@@ -78,22 +77,6 @@ def probe(vps: TestVPS, lines: list[str], environment: str = "") -> str:
     return vps.sh(f"{environment} timeout 8 /usr/local/bin/airbound-site -c /tmp/probe.toml 2>&1 | tail -3; rm -f /tmp/probe.toml", check=False)
 
 
-def reboot(vps: TestVPS) -> str:
-    """Restart the server and wait for the boot to finish; returns systemd's final state."""
-    vps.sh("sudo systemctl reboot", check=False, timeout=30)
-    time.sleep(25)
-    state = "down"
-    for _ in range(40):
-        try:
-            state = vps.sh("systemctl is-system-running 2>&1", check=False, timeout=30).strip()
-        except Exception:  # still restarting: ssh refuses or times out
-            state = "down"
-        if state in ("running", "degraded"):
-            break
-        time.sleep(10)
-    return state
-
-
 def main() -> None:
     print(f"testing {begin_run()[:12]}")
     results: dict[str, dict] = {}
@@ -102,7 +85,7 @@ def main() -> None:
         results[name] = {"ok": ok, "detail": detail}
         print(f"{'✓' if ok else '✗'} {name}: {detail}")
 
-    with TestVPS() as vps:
+    with TestVPS(debian=True) as vps:
         vps.put(relay_tarball(), "relay.tgz")
         vps.sh("sudo mkdir -p /etc/airbound-controller && sudo chmod 700 /etc/airbound-controller")
         vps.sh(f"sudo tee /etc/airbound-controller/controller.env >/dev/null <<'EOF'\n{STAGING_ENV}EOF")
@@ -151,7 +134,7 @@ def main() -> None:
             check("health endpoint", False, ops[:200])
 
         # A stuck boot stops the automatic updates without any failed unit: it took a restart to show on airbound.dev.
-        booted = reboot(vps)
+        booted = vps.reboot()
         check("reboot: boot finishes", booted == "running", f"systemd state {booted}")
         cycles = vps.sh("sudo journalctl -b --no-pager | grep -c 'ordering cycle'", check=False).strip()
         check("reboot: no ordering cycles", cycles == "0", f"{cycles} found")

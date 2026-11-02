@@ -2,6 +2,7 @@
 
 The test environment's private addresses live in .env (never committed):
 PROXMOX_HOST, PROXMOX_KEY, TEST_VPS_VMID, TEST_VPS_IP, TEST_VPS_KEY,
+DEBIAN_VPS_VMID, DEBIAN_VPS_IP,
 RELAY_SSH, RELAY_KEY, RELAY_DOMAIN, the HA test VM's HA_URL/HA_WS/HA_TOKEN,
 and the beta VM's BETA_VMID/BETA_HA_TOKEN (scripts/beta.py).
 """
@@ -110,15 +111,19 @@ def relay_tarball() -> Path:
 # ---------- the test VPS on Proxmox ----------
 
 class TestVPS:
-    """VM on Proxmox with a snapshot "fresh" (clean Ubuntu). Always stopped again afterwards."""
+    """VM on Proxmox with a snapshot "fresh". Always stopped again afterwards.
 
-    def __init__(self) -> None:
+    Ubuntu by default, the other system people run their own relay on. debian=True
+    is set up like airbound.dev: Debian 13, ifupdown, no netplan or networkd, 1 GB.
+    """
+
+    def __init__(self, debian: bool = False) -> None:
         self.host = f"root@{env('PROXMOX_HOST')}"
         self.host_key = env("PROXMOX_KEY")
-        self.vmid = env("TEST_VPS_VMID")
-        self.ip = env("TEST_VPS_IP")
+        self.vmid = env("DEBIAN_VPS_VMID" if debian else "TEST_VPS_VMID")
+        self.ip = env("DEBIAN_VPS_IP" if debian else "TEST_VPS_IP")
         self.key = env("TEST_VPS_KEY")
-        self.target = f"ubuntu@{self.ip}"
+        self.target = f"{'root' if debian else 'ubuntu'}@{self.ip}"
 
     def __enter__(self) -> "TestVPS":
         ssh(self.host, self.host_key, f"qm rollback {self.vmid} fresh && qm start {self.vmid}")
@@ -131,6 +136,30 @@ class TestVPS:
 
     def sh(self, command: str, check: bool = True, timeout: int = 900) -> str:
         return ssh(self.target, self.key, command, check=check, timeout=timeout)
+
+    def reboot(self) -> str:
+        """Restart the server and wait for the boot to finish; returns systemd's final state."""
+        self.sh("sudo systemctl reboot", check=False, timeout=30)
+        time.sleep(25)
+        state = "down"
+        for _ in range(40):
+            try:
+                state = self.sh("systemctl is-system-running 2>&1", check=False, timeout=30).strip()
+            except Exception:  # still restarting: ssh refuses or times out
+                state = "down"
+            if state in ("running", "degraded"):
+                break
+            time.sleep(10)
+        return state
+
+    def boot_problem(self) -> str:
+        """After reboot(): what is wrong with this boot, or "" when nothing is."""
+        cycles = self.sh("sudo journalctl -b --no-pager | grep -c 'ordering cycle'", check=False).strip()
+        if cycles != "0":
+            return f"{cycles} ordering cycles"
+        if self.sh("sudo nft list table inet airbound_firewall 2>/dev/null | grep -c 'policy drop'", check=False).strip() != "1":
+            return "the firewall is off"
+        return ""
 
     def put(self, source: Path, name: str) -> None:
         scp(self.key, str(source), f"{self.target}:{name}")
