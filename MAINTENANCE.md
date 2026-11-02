@@ -51,9 +51,9 @@ push to next ──▶ pre-push hook: unit, relay and browser tests (a failure s
       ▶ CI: unit and relay tests, images built, Trivy, govulncheck
       │
       ▶ test VM (follows next) ──▶ python scripts/e2e.py: hosted relay, MFA guard and
-      │                           bypass probes, MFA enforcement, own relay on a fresh test VPS
+      │                           bypass probes, MFA enforcement, own relay on a fresh Ubuntu test VPS
       │
-      ▶ relay changes: python scripts/relay_staging.py ──▶ the relay installed on the test VPS
+      ▶ relay changes: python scripts/relay_staging.py ──▶ the relay installed on the Debian test VPS
       │
       ▶ python scripts/release.py ──▶ main = this commit (users update), then
                                      python scripts/relay_deploy.py ──▶ airbound.dev, with automatic rollback
@@ -67,7 +67,7 @@ push to next ──▶ pre-push hook: unit, relay and browser tests (a failure s
   - Deploys `next` to the test VM.
   - Checks the hosted relay end to end, and from outside that none of 11 spellings of the login path finishes a login without MFA.
   - Runs MFA enforcement with a throwaway user.
-  - Installs the add-on's own-relay command on the test VPS rolled back to its `fresh` snapshot, links the test VM through it, reboots the VPS and checks that it boots cleanly with the firewall and relay up, goes back to the hosted relay, and stops the VPS.
+  - Installs the add-on's own-relay command on the Ubuntu test VPS rolled back to its `fresh` snapshot, links the test VM through it, reboots the VPS and checks that it boots cleanly with the firewall and relay up, goes back to the hosted relay, and stops the VPS.
 - **Beta check** (`scripts/beta.py`, about 15 minutes): starts the beta VM (Home Assistant OS on the beta channel, stopped otherwise), updates the Supervisor, HA OS and Home Assistant to the newest beta, installs or updates AirBound from `next`, and runs all integration tests with a self-signed address. They include the restore test (`tests/integration/test_restore.py`): a backup of AirBound must leave out the machine key, `frpc.toml` and the logs; after restoring it the address stays off, the panel and a notification ask first, and confirming brings remote access back. The test VM skips that test, since a restore there would need a Patreon login. Then the VM is stopped.
 - **Hosted restore** (`scripts/hosted_restore.py`, about 5 minutes, needs the maintainer's Patreon login): restores a backup of AirBound on the test VM, checks that the address stays off until confirmed, links again and checks that the same address comes back. Run it when the restore or linking flow changes.
 - **Copied backup** (`scripts/copied_backup.py`, about 20 minutes, needs the maintainer's Patreon login): restores the test VM's AirBound backup on the beta VM, tries the copied key with a real frpc from the test VPS, checks that airbound.dev refuses it and the original warns, then links the test VM again. Run it when the machine check or linking changes.
@@ -109,7 +109,7 @@ Not reported upstream; we handle them ourselves. Check after each Home Assistant
 
 **Base image:** change the tag and digest of both `python:` stages in `airbound/Dockerfile`. Get the digest from Docker Hub's registry API for the multi-arch index.
 
-**Relay server OS:** automatic. A restart that stays pending for more than 3 days, or updates that stop, show up in the report.
+**Relay server OS:** automatic. A restart that stays pending for more than 3 days, or updates that stop, show up in the report. When updates stop, look at the boot first: a stuck boot job (`systemctl is-system-running` says `starting`, `systemctl list-jobs` isn't empty) holds the apt jobs back with no failed unit. `relay_deploy.py` doesn't restart the server, so a fix for the boot takes effect at the next restart.
 
 ## Setting up the report's relay check
 
