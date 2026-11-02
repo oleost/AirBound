@@ -23,7 +23,7 @@ permissions:
 env:
   FRP_VERSION: "0.71.1"
   FRP_COMMIT: "d8cf1800dc1abd7fda1828cab105d7a6b5a50eb1"  # the v0.71.1 tag; tags can move, commits can't
-  BUILD: "airbound1"
+  BUILD: "airbound2"
 
 jobs:
   build:
@@ -56,7 +56,7 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         working-directory: src
         run: |
-          go get golang.org/x/net@latest golang.org/x/crypto@latest golang.org/x/text@latest golang.org/x/sys@latest
+          go get golang.org/x/net@latest golang.org/x/crypto@latest golang.org/x/text@latest golang.org/x/sys@latest github.com/go-jose/go-jose/v4@latest
           go mod tidy
           git --no-pager diff --stat go.mod
       - name: Test
@@ -93,6 +93,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="frp-v${FRP_VERSION}-${BUILD}"
-          notes="frp ${FRP_VERSION} (upstream commit ${FRP_COMMIT}) built from source by GitHub Actions with $(cat dist/go-version.txt) and current golang.org/x libraries, without the web dashboard. Used by AirBound's relay installers and add-on image. See .github/workflows/frp.yaml."
+          notes="frp ${FRP_VERSION} (upstream commit ${FRP_COMMIT}) built from source by GitHub Actions with $(cat dist/go-version.txt) and current golang.org/x and go-jose libraries, without the web dashboard. Used by AirBound's relay installers and add-on image. See .github/workflows/frp.yaml."
           gh release create "$tag" dist/*.tar.gz dist/sha256sums.txt dist/govulncheck.txt \
             --repo "${{ github.repository }}" --title "$tag" --notes "$notes" --latest=false
