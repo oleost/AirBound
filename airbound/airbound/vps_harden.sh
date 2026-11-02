@@ -88,9 +88,14 @@ EOF
   cat > /etc/systemd/system/airbound-firewall.service <<'EOF'
 [Unit]
 Description=AirBound firewall (nftables)
-After=nftables.service
-Before=network-pre.target
+# Runs before the network, so it can't have the default dependencies: they put it
+# after basic.target, and with cloud-init that is an ordering cycle at every boot.
+# systemd then drops boot jobs at random, and the apt timers can wait forever.
+DefaultDependencies=no
+After=local-fs.target nftables.service
+Before=network-pre.target shutdown.target
 Wants=network-pre.target
+Conflicts=shutdown.target
 
 [Service]
 Type=oneshot

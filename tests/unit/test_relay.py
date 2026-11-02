@@ -5,7 +5,7 @@ import re
 from airbound.caddy import render_caddyfile
 from cryptography import x509
 
-from airbound.relay import SERVER_NAME, explain, install_command, make_pki, new_token, render_frpc, valid_relay_host
+from airbound.relay import HARDEN_SCRIPT, SERVER_NAME, explain, install_command, make_pki, new_token, render_frpc, valid_relay_host
 from airbound.settings import Settings, wizard_steps
 
 RELAY = Settings(
@@ -37,6 +37,14 @@ def test_install_command_embeds_settings_and_verifies_download():
     assert "transport.tls.certFile" in script
     assert "__" not in script  # every placeholder was filled in
     assert "harden_firewall()" in script and 'harden_server "$CONTROL_PORT $PUBLIC_PORT"' in script
+
+
+def test_firewall_unit_has_no_default_dependencies():
+    # Before=network-pre.target with the default dependencies is an ordering cycle at every boot.
+    script = HARDEN_SCRIPT.read_text(encoding="utf-8")
+    unit = script.split("airbound-firewall.service <<'EOF'")[1].split("[Service]")[0]
+    assert "Before=network-pre.target" in unit
+    assert "DefaultDependencies=no" in unit
 
 
 def test_frpc_config_tunnels_to_proxy_protocol_listener():

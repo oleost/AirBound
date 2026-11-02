@@ -6,7 +6,8 @@ Installs the hosted relay with staging settings (no real Patreon or
 Cloudflare), then checks: every service runs inside its sandbox, the firewall
 is up, the frp plugin refuses fake clients and a real key from another machine
 (a copied backup), the controller reads the hub's
-traffic counters, and the health endpoint answers. The VPS is stopped
+traffic counters, the health endpoint answers, and after a reboot the server
+finishes booting with no ordering cycles and the firewall up. The VPS is stopped
 afterwards. The result goes to test-results/relay-staging-<commit>.json, which
 scripts/release.py requires when relay-server/ changed.
 """
@@ -17,6 +18,7 @@ import json
 import re
 import secrets
 import sys
+import time
 
 from testenv import ROOT, TestVPS, begin_run, relay_tarball, save_result
 
@@ -76,6 +78,22 @@ def probe(vps: TestVPS, lines: list[str], environment: str = "") -> str:
     return vps.sh(f"{environment} timeout 8 /usr/local/bin/airbound-site -c /tmp/probe.toml 2>&1 | tail -3; rm -f /tmp/probe.toml", check=False)
 
 
+def reboot(vps: TestVPS) -> str:
+    """Restart the server and wait for the boot to finish; returns systemd's final state."""
+    vps.sh("sudo systemctl reboot", check=False, timeout=30)
+    time.sleep(25)
+    state = "down"
+    for _ in range(40):
+        try:
+            state = vps.sh("systemctl is-system-running 2>&1", check=False, timeout=30).strip()
+        except Exception:  # still restarting: ssh refuses or times out
+            state = "down"
+        if state in ("running", "degraded"):
+            break
+        time.sleep(10)
+    return state
+
+
 def main() -> None:
     print(f"testing {begin_run()[:12]}")
     results: dict[str, dict] = {}
@@ -131,6 +149,16 @@ def main() -> None:
             check("health endpoint", bool(data.get("frp_build")), f"frp {data.get('frp_build')}, controller {str(data.get('controller_build')).splitlines()[0]}")
         except ValueError:
             check("health endpoint", False, ops[:200])
+
+        # A stuck boot stops the automatic updates without any failed unit: it took a restart to show on airbound.dev.
+        booted = reboot(vps)
+        check("reboot: boot finishes", booted == "running", f"systemd state {booted}")
+        cycles = vps.sh("sudo journalctl -b --no-pager | grep -c 'ordering cycle'", check=False).strip()
+        check("reboot: no ordering cycles", cycles == "0", f"{cycles} found")
+        firewall = vps.sh("sudo nft list table inet airbound_firewall 2>/dev/null | grep -c 'policy drop'", check=False).strip()
+        check("reboot: firewall up", firewall == "1", "drop policy active" if firewall == "1" else "airbound_firewall table missing")
+        states = {u: vps.sh(f"systemctl is-active {u}", check=False).strip() for u in UNITS}
+        check("reboot: services", all(s == "active" for s in states.values()), ", ".join(f"{u.removeprefix('airbound-')} {s}" for u, s in states.items()))
 
     path = save_result("relay-staging", results)
     failed = [k for k, v in results.items() if not v["ok"]]

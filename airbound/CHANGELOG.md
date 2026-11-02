@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.15.2
+## 0.15.3
 
-- Security updates to the parts AirBound is built on: frp, Caddy with its CrowdSec bouncer, CrowdSec and the Python base image. There is nothing you have to do.
-- **If you run your own relay server:** run the install command from AirBound again to get the updated frp.
+- Security updates to the parts AirBound is built on: frp, Caddy with its CrowdSec bouncer, CrowdSec and the Python base image.
+- **If you run your own relay server, please update it:** open the **Relay server** step in AirBound and run its command on the server again, then restart the server. A fault in the firewall AirBound set up could stop the server's automatic security updates after a restart. This fixes that and installs the updated frp. Your connection keeps working as before.
+- With the hosted relay, or through your router, there is nothing you have to do.
 
 ## 0.15.1
 
