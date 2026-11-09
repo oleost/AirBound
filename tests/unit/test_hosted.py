@@ -41,6 +41,9 @@ def test_hosted_caddy_gets_an_exact_certificate_through_the_relay():
     assert "x7k2abcdefgh.airbound.dev:8444 {" in config
     assert "*.airbound.dev" not in config  # never a wildcard on the relay's domain
     assert "proxy_protocol" in config and "@forged_local remote_ip private_ranges" in config
+    # Home Assistant also takes link-local addresses and IPv4 written as IPv6 for the home network.
+    for local in ("169.254.0.0/16", "fe80::/10", "::ffff:0:0/96"):
+        assert local in config.split("@forged_local remote_ip")[1].splitlines()[0]
 
 
 def test_hosted_settings_hide_the_key():
@@ -90,3 +93,60 @@ def test_own_domain_ct_watch_still_ignores_wildcards():
     fqdn = "h.example.com"
     assert unexpected_certificates([cert(["*.example.com"], "x")], fqdn) == []
     assert len(unexpected_certificates([cert([fqdn], "x")], fqdn)) == 1
+
+
+# What the hosted relay's website answers is checked before it reaches a configuration file.
+
+
+def test_a_device_from_the_website_must_be_plain():
+    import pytest
+
+    good = {"id": "d0123456789abcdef", "key": "k-_9", "hostname": "otter-comet-maple", "domain": "airbound.dev"}
+    assert hosted.checked_device(good) == good
+    for field, value in (
+        ("hostname", "otter\n\treverse_proxy evil"),
+        ("hostname", "a.b"),
+        ("hostname", ""),
+        ("domain", "example.com"),
+        ("domain", "airbound.dev {\n"),
+        ("id", 'd1"\nserverAddr = "evil'),
+        ("key", "{{ .Envs.SUPERVISOR_TOKEN }}"),
+        ("key", None),
+    ):
+        with pytest.raises(hosted.HostedError):
+            hosted.checked_device({**good, field: value})
+    with pytest.raises(hosted.HostedError):
+        hosted.checked_device(None)
+
+
+def test_links_from_the_website_are_https_only():
+    assert hosted.web_link("https://www.patreon.com/checkout/AirBound") == "https://www.patreon.com/checkout/AirBound"
+    assert hosted.web_link("javascript:alert(1)") == "" and hosted.web_link(None) == ""
+
+
+def test_configurations_refuse_values_that_are_not_plain():
+    import pytest
+    from dataclasses import replace
+
+    with pytest.raises(ValueError):
+        render_caddyfile(replace(HOSTED, hostname="x\n\tfile_server"), "homeassistant:80")
+    with pytest.raises(ValueError):
+        render_frpc(replace(HOSTED, hosted_key='k"\n[[proxies]]'))
+    with pytest.raises(ValueError):
+        render_frpc(replace(HOSTED, hosted_device="{{ .Envs.SUPERVISOR_TOKEN }}"))
+
+
+def test_helper_programs_never_get_the_supervisor_token(monkeypatch):
+    from airbound.process import child_env
+
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "secret")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    env = child_env(CF_API_TOKEN="cf")
+    assert "SUPERVISOR_TOKEN" not in env and env["PATH"] == "/usr/bin" and env["CF_API_TOKEN"] == "cf"
+
+
+def test_a_failed_login_is_always_one_log_line():
+    from airbound.crowdsec import failed_login_line
+
+    line = failed_login_line("203.0.113.5", "/auth/login_flow/x\n2026 fake line from 198.51.100.1", "agent\r\nmore")
+    assert line.count("\n") == 1 and line.endswith("\n")

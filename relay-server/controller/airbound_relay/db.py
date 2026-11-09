@@ -64,6 +64,10 @@ MIGRATIONS = (("devices", "machine_hash", "TEXT"), ("devices", "foreign_seen", "
 RESERVED = frozenset({"www", "relay", "api", "admin", "mail", "status", "docs", "app"})
 
 
+class DeviceLimit(Exception):
+    """The membership already has all its Home Assistants; the person has to say which one to replace."""
+
+
 def digest(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
 
@@ -167,11 +171,15 @@ class Database:
         )
         return [d for d in (self._device(r) for r in rows) if d]
 
-    def link_device(self, patreon_id: str, install_id: str, max_devices: int, now: float | None = None) -> tuple[Device, str]:
+    def link_device(
+        self, patreon_id: str, install_id: str, max_devices: int, now: float | None = None, replace: str | None = None
+    ) -> tuple[Device, str]:
         """A device and its new key for this Home Assistant.
 
         Linking the same Home Assistant again keeps its address and replaces the
-        key; the next machine to use the new key claims it. Past the device limit, the device seen least recently is unlinked.
+        key; the next machine to use the new key claims it. At the device limit
+        nothing is unlinked by itself: DeviceLimit is raised unless `replace`
+        names the device of this account that makes room.
         """
         now = now or time.time()
         key = new_secret()
@@ -183,8 +191,12 @@ class Database:
             )
             return device, key
         others = self.devices_of(patreon_id)
-        for old in others[: max(0, len(others) - max_devices + 1)]:
-            self._db.execute("UPDATE devices SET revoked = 1 WHERE id = ?", (old.id,))
+        if replace is not None:
+            if replace not in {d.id for d in others}:
+                raise DeviceLimit("not a device of this account")
+            self._db.execute("UPDATE devices SET revoked = 1 WHERE id = ?", (replace,))
+        elif len(others) >= max_devices:
+            raise DeviceLimit("the account has all its devices")
         while True:
             hostname = new_hostname()
             if not self._db.execute("SELECT 1 FROM devices WHERE hostname = ?", (hostname,)).fetchone():
@@ -216,6 +228,10 @@ class Database:
         device.foreign_seen = now or time.time()
         self._db.execute("UPDATE devices SET foreign_seen = ? WHERE id = ?", (device.foreign_seen, device.id))
         return False
+
+    def new_devices_since(self, patreon_id: str, since: float) -> int:
+        """How many addresses this account got since then, unlinked ones included."""
+        return self._db.execute("SELECT COUNT(*) FROM devices WHERE patreon_id = ? AND created >= ?", (patreon_id, since)).fetchone()[0]
 
     def count_devices(self) -> int:
         return self._db.execute("SELECT COUNT(*) FROM devices WHERE revoked = 0").fetchone()[0]

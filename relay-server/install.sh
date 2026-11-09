@@ -85,6 +85,9 @@ RELAY_TIER_ID=
 PATREON_VANITY=AirBound
 FREE_PATREON_USERS=
 MAX_DEVICES=2
+# New addresses per membership in 7 days. Each needs a certificate, and Let's Encrypt
+# gives the whole domain a weekly allowance.
+NEW_DEVICES_PER_WEEK=4
 BANDWIDTH=4MB
 GRACE_DAYS=3
 # Fair use: past DEVICE_MONTHLY_GB a Home Assistant runs at THROTTLED_BANDWIDTH for the
@@ -341,12 +344,21 @@ table inet airbound_limits {
 	set new_https { type ipv4_addr; flags dynamic; timeout 1m; size 65536; }
 	set conns_tunnel { type ipv4_addr; flags dynamic; size 65536; }
 	set new_tunnel { type ipv4_addr; flags dynamic; timeout 10m; size 65536; }
+	set conns_https6 { type ipv6_addr; flags dynamic; size 65536; }
+	set new_https6 { type ipv6_addr; flags dynamic; timeout 1m; size 65536; }
+	set conns_tunnel6 { type ipv6_addr; flags dynamic; size 65536; }
+	set new_tunnel6 { type ipv6_addr; flags dynamic; timeout 10m; size 65536; }
 	chain input {
 		type filter hook input priority filter - 5; policy accept;
 		tcp dport 443 ct state new add @conns_https { ip saddr ct count over 256 } counter drop
 		tcp dport 443 ct state new update @new_https { ip saddr limit rate over 60/second burst 120 packets } counter drop
 		tcp dport 7000 ct state new add @conns_tunnel { ip saddr ct count over 32 } counter drop
 		tcp dport 7000 ct state new update @new_tunnel { ip saddr limit rate over 20/minute burst 40 packets } counter drop
+		# IPv6 counts per /64: one customer has that whole network.
+		tcp dport 443 ct state new add @conns_https6 { ip6 saddr and ffff:ffff:ffff:ffff:: ct count over 256 } counter drop
+		tcp dport 443 ct state new update @new_https6 { ip6 saddr and ffff:ffff:ffff:ffff:: limit rate over 60/second burst 120 packets } counter drop
+		tcp dport 7000 ct state new add @conns_tunnel6 { ip6 saddr and ffff:ffff:ffff:ffff:: ct count over 32 } counter drop
+		tcp dport 7000 ct state new update @new_tunnel6 { ip6 saddr and ffff:ffff:ffff:ffff:: limit rate over 20/minute burst 40 packets } counter drop
 	}
 }
 EOF

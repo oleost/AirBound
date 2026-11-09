@@ -56,7 +56,7 @@ Cloudflare, and a Patreon creator page with a tier for the relay.
    ```
 
 4. **Run the installer** from this directory: `sudo sh install.sh`. The first run creates `/etc/airbound-controller/controller.env`; fill in `DOMAIN`, `CAMPAIGN_ID` and `RELAY_TIER_ID` (shown by the Patreon API), then run it again.
-5. **Point the domain at the server:** `cd /opt/airbound-controller && sudo -u airbound-controller venv/bin/python -m airbound_relay dns`.
+5. **Point the domain at the server:** `cd /opt/airbound-controller && sudo -u airbound-controller venv/bin/python -m airbound_relay dns`. Only this command reads the Cloudflare token; the running controller never does. The token can change the whole domain, so delete `/etc/airbound-controller/cloudflare_token` from the server afterwards and put it back only to run the command again.
 
 Running the installer again updates everything and keeps the settings, the database and the hub's certificate. To update a live relay safely, with a backup and automatic rollback, use `scripts/relay_deploy.py` as described in [MAINTENANCE.md](../MAINTENANCE.md).
 
@@ -73,7 +73,8 @@ to your domain.
 | `RELAY_HOST` | `relay.<domain>` | Where tunnels connect (port 7000) |
 | `CAMPAIGN_ID`, `RELAY_TIER_ID` | | The Patreon campaign and the tier that gives access |
 | `FREE_PATREON_USERS` | | Patreon user ids with free access, comma-separated (for example the operator) |
-| `MAX_DEVICES` | `2` | Home Assistants per membership; linking a third unlinks the one seen least recently |
+| `MAX_DEVICES` | `2` | Home Assistants per membership; linking one more asks the person which one it replaces |
+| `NEW_DEVICES_PER_WEEK` | `4` | New addresses per membership in 7 days. Each needs a certificate, and Let's Encrypt gives the whole domain a weekly allowance (50), so one account must not be able to use it up |
 | `BANDWIDTH` | `4MB` | Per Home Assistant and direction, in frp's notation |
 | `GRACE_DAYS` | `3` | Access after a membership lapses, to fix a failed payment |
 | `DEVICE_MONTHLY_GB` | `300` | Fair use per Home Assistant and calendar month (in + out) |

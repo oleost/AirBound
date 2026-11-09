@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.5
+
+A security review of AirBound. Nothing here was known to be misused, and there is nothing you have to do.
+
+- **The hosted relay's website can't change how AirBound is set up.** The address and key it hands out are now checked before AirBound uses them, so even if airbound.dev were taken over, it could only give your Home Assistant a plain address under airbound.dev.
+- **Linking to the hosted relay is harder to trick.** The login with Patreon or GitHub only starts from the page that shows your code, in the browser that opened it. If your support already covers all its Home Assistants, the link page asks which one the new one replaces; none is unlinked by itself any more.
+- The programs that face the internet (the proxy, the relay connection and CrowdSec) no longer get AirBound's own key to Home Assistant.
+- With a relay, a connection that claims to come from your home network is refused in a few more cases.
+
 ## 0.15.4
 
 - Updated frp, which carries AirBound's connection, to 0.72.0. It fixes a fault where a closed connection could keep a processor core busy, and reconnects faster after a dropped connection.

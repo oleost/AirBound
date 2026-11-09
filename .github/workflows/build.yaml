@@ -50,6 +50,18 @@ jobs:
         id: version
         run: |
           echo "version=$(sed -n 's/^version: "\(.*\)"$/\1/p' airbound/config.yaml)" >> "$GITHUB_OUTPUT"
+      - name: A released version keeps its image
+        # Images are published under the version number, and Home Assistant installs by that number.
+        # Once v<version> is released, only the very same add-on may be built under it again.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git fetch --quiet --depth 1 origin "refs/tags/v$VERSION:refs/tags/v$VERSION" 2>/dev/null; then
+            if ! git diff --quiet "v$VERSION" HEAD -- airbound; then
+              echo "::error::v$VERSION is released and the add-on has changed since. Bump the version in airbound/config.yaml (and add a changelog entry)."
+              exit 1
+            fi
+          fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:

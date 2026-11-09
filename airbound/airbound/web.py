@@ -249,10 +249,13 @@ class Panel:
             info = await hosted.account(self._session, self._store.settings.hosted_key, machine.key())
         except hosted.HostedError:
             return
-        fqdn = info.get("fqdn") or ""
-        if info.get("state") not in ("active", "grace") or "." not in fqdn:
+        fqdn = info.get("fqdn")
+        if info.get("state") not in ("active", "grace") or not isinstance(fqdn, str) or "." not in fqdn:
             return
-        hostname, domain = fqdn.split(".", 1)
+        try:
+            hostname, domain = hosted.checked_address(*fqdn.split(".", 1))
+        except hosted.HostedError:
+            return
         settings = self._store.settings
         since = settings.hosted_since or datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         await self._caddy.stop()
@@ -270,7 +273,7 @@ class Panel:
         answer = await hosted.poll_link(self._session, settings.hosted_claim, settings.hosted_poll)
         state = answer.get("state")
         if state == "approved":
-            device = answer["device"]
+            device = hosted.checked_device(answer.get("device"))
             new_fqdn = f"{device['hostname']}.{device['domain']}"
             if new_fqdn != settings.fqdn or settings.tls != "hosted":
                 await self._caddy.stop()
@@ -301,7 +304,7 @@ class Panel:
                 "state": state,
                 "code": settings.hosted_code,
                 "link_url": f"{hosted.SERVICE}/link/{settings.hosted_claim}",
-                "join_url": answer.get("join_url", ""),
+                "join_url": hosted.web_link(answer.get("join_url")),
             }
         )
 

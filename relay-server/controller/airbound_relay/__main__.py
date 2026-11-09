@@ -109,7 +109,7 @@ async def run() -> None:
 
 
 async def dns() -> None:
-    config = config_module.load()
+    config = config_module.load(dns_token=True)
     async with ClientSession() as session:
         for line in await ensure_records(session, config):
             print(line)

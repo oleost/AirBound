@@ -12,9 +12,11 @@ multicast doesn't leave the add-on's network.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import re
 import struct
+from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -28,6 +30,9 @@ WAN_SERVICES = (
     "urn:schemas-upnp-org:service:WANIPConnection:1",
     "urn:schemas-upnp-org:service:WANPPPConnection:1",
 )
+
+
+HOME_NETWORKS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 
 
 class PortMapError(Exception):
@@ -91,6 +96,21 @@ def ssdp_location(answer: str) -> str | None:
     return match.group(1) if match else None
 
 
+def on_home_network(url: str) -> bool:
+    """Is this a plain http address of a device on the home network?
+
+    The router says where its UPnP service is, and AirBound then calls that
+    address. An answer could be forged by another device at home, so anything
+    but a private IP address (a name, the internet, this machine) is refused.
+    """
+    try:
+        parts = urlsplit(url)
+        address = ipaddress.ip_address(parts.hostname or "")
+    except ValueError:
+        return False
+    return parts.scheme == "http" and any(address in network for network in HOME_NETWORKS)
+
+
 def find_control_url(description: str, base: str) -> tuple[str, str] | None:
     """(control URL, service type) of the router's WAN connection service."""
     if "<!DOCTYPE" in description.upper() or "<!ENTITY" in description.upper():
@@ -125,7 +145,7 @@ async def _upnp_call(session: ClientSession, gateway: str, action: str, args: di
     ).encode()
     answer = (await _udp_ask(gateway, 1900, search, 1.0)).decode(errors="replace")
     location = ssdp_location(answer)
-    if not location:
+    if not location or not on_home_network(location):
         raise PortMapError("router gave no UPnP description")
     timeout = ClientTimeout(total=5)
     try:
@@ -135,6 +155,8 @@ async def _upnp_call(session: ClientSession, gateway: str, action: str, args: di
         if not found:
             raise PortMapError("router has no UPnP port mapping service")
         url, service = found
+        if not on_home_network(url):
+            raise PortMapError("router's UPnP service isn't on the home network")
         headers = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{service}#{action}"'}
         async with session.post(url, data=soap_body(service, action, args), headers=headers, timeout=timeout) as resp:
             if resp.status != 200:

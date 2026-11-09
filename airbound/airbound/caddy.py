@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from collections.abc import Callable
 from pathlib import Path
 
 from .crowdsec import LAPI as CROWDSEC_LAPI
-from .relay import RELAY_LISTENER
+from .process import child_env
+from .relay import RELAY_LISTENER, valid_relay_host
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -17,17 +17,21 @@ _LOGGER = logging.getLogger(__name__)
 CADDYFILE = Path("/data/Caddyfile")
 ACCESS_LOG = Path("/data/logs/access.log")
 GUARD_ADDRESS = "127.0.0.1:8100"
+# Addresses Home Assistant takes for the home network or itself. Caddy's private_ranges
+# leaves out link-local addresses and IPv4 addresses written as IPv6 (::ffff:10.0.0.1),
+# which Home Assistant also counts as local.
+LOCAL_RANGES = "private_ranges 0.0.0.0/8 169.254.0.0/16 fe80::/10 ::ffff:0:0/96"
 
 
 def _site(address: str, settings: Settings, ha_upstream: str, crowdsec: bool, guard_forged: bool = False) -> str:
     bouncer = "\n\t\t\tcrowdsec" if crowdsec else ""
     # On the relay listener every real client comes from the internet. A PROXY
-    # header claiming a private or loopback address can only be forged (by the
+    # header claiming a private, link-local or loopback address can only be forged (by the
     # relay's operator or someone posing as the relay); drop it, so nobody can
     # pass for a device on the home network.
     forged = (
-        """
-			@forged_local remote_ip private_ranges
+        f"""
+			@forged_local remote_ip {LOCAL_RANGES}
 			abort @forged_local"""
         if guard_forged
         else ""
@@ -73,6 +77,9 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
     the two site blocks share one certificate policy; per-site tls blocks for
     the same wildcard would be two policies, which Caddy refuses.
     """
+    if not (valid_relay_host(settings.fqdn) and valid_relay_host(settings.domain)):
+        # The names are written into the configuration as they are; anything but a plain name stops here.
+        raise ValueError("the address isn't a plain host name")
     _relay_host, relay_port = RELAY_LISTENER.split(":")
     # {$VAR} is filled in when the config is loaded, so a new token applies on reload.
     if settings.tls == "internal":
@@ -146,7 +153,7 @@ class Caddy:
         ACCESS_LOG.parent.mkdir(parents=True, exist_ok=True)
         key = self._bouncer_key()
         CADDYFILE.write_text(render_caddyfile(settings, ha_upstream, crowdsec=bool(key)))
-        env = {**os.environ, "CF_API_TOKEN": settings.cloudflare_token, "CROWDSEC_API_KEY": key}
+        env = child_env(CF_API_TOKEN=settings.cloudflare_token, CROWDSEC_API_KEY=key)
         if self.running:
             await self._run("caddy", "reload", "--config", str(CADDYFILE), "--adapter", "caddyfile", env=env)
             return

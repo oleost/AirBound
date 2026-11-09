@@ -33,6 +33,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 from . import hosted, machine
+from .process import child_env
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -166,6 +167,9 @@ def render_hosted_frpc(settings: Settings) -> str:
     first used the key. The machine key comes from frpc's environment: the
     config file is in /data, and a backup must never hold the machine key.
     """
+    if not (hosted.plain(settings.hosted_device) and hosted.plain(settings.hosted_key) and valid_relay_host(settings.fqdn)):
+        # These go into the configuration as they are; anything but plain values stops here.
+        raise ValueError("the hosted relay's device, key or address isn't a plain value")
     host, port = RELAY_LISTENER.split(":")
     admin_host, admin_port = ADMIN.split(":")
     return f"""serverAddr = "{hosted.RELAY_HOST}"
@@ -221,7 +225,7 @@ class Frpc:
         ensure_pki()
         FRPC_CONFIG.write_text(render_frpc(settings))
         os.chmod(FRPC_CONFIG, 0o600)
-        environment = {**os.environ, MACHINE_ENV: machine.key()}
+        environment = child_env(**{MACHINE_ENV: machine.key()})
         self._process = await asyncio.create_subprocess_exec("frpc", "-c", str(FRPC_CONFIG), env=environment)
         _LOGGER.info("Relay client started for %s", hosted.RELAY_HOST if settings.mode == "hosted" else settings.relay_host)
 

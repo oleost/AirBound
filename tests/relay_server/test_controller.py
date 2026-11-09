@@ -81,15 +81,26 @@ def test_relinking_the_same_home_assistant_keeps_its_address(tmp_path):
     assert db.device_by_key(key) is None and db.device_by_key(new_key).id == device.id
 
 
-def test_device_limit_unlinks_the_least_recent(tmp_path):
+def test_at_the_device_limit_nothing_is_unlinked_until_the_person_picks(tmp_path):
+    import pytest
+
+    from airbound_relay.db import DeviceLimit
+
     db = Database(tmp_path / "db")
     db.set_entitled("u1", True)
     first, key1 = db.link_device("u1", "install-aaaaaaaaaaaaaaaa", 2, now=1)
-    _second, key2 = db.link_device("u1", "install-bbbbbbbbbbbbbbbb", 2, now=2)
-    db.seen(first.id, now=10)  # the first one is still in use
-    _third, key3 = db.link_device("u1", "install-cccccccccccccccc", 2, now=11)
+    second, key2 = db.link_device("u1", "install-bbbbbbbbbbbbbbbb", 2, now=2)
+    with pytest.raises(DeviceLimit):
+        db.link_device("u1", "install-cccccccccccccccc", 2, now=11)
+    assert db.device_by_key(key1) and db.device_by_key(key2)
+    db.set_entitled("u2", True)
+    other, _ = db.link_device("u2", "install-dddddddddddddddd", 2, now=3)
+    with pytest.raises(DeviceLimit):  # only one of your own
+        db.link_device("u1", "install-cccccccccccccccc", 2, now=11, replace=other.id)
+    _third, key3 = db.link_device("u1", "install-cccccccccccccccc", 2, now=11, replace=second.id)
     assert db.device_by_key(key1) and db.device_by_key(key3)
     assert db.device_by_key(key2) is None
+    assert db.new_devices_since("u1", 0) == 3 and db.new_devices_since("u1", 5) == 1  # unlinked ones count
 
 
 def test_plugin_login_needs_a_valid_key_for_that_device(tmp_path):
@@ -183,8 +194,8 @@ def test_terms_say_hobby_project_without_guarantee_and_are_linked_everywhere():
     for phrase in ("hobby project", "as is", "not liable", "not buying a service", "30 days"):
         assert phrase in terms
     assert 'href="/terms"' in pages.page("x", "", CONFIG)
-    assert 'href="/terms"' in pages.confirm_code("c", "ABC123")
-    assert 'href="/terms"' in pages.needs_membership(CONFIG, "c")
+    assert 'href="/terms"' in pages.confirm_code("c", "ABC123", "t")
+    assert 'href="/terms"' in pages.needs_membership(CONFIG, "c", "t")
 
 
 def test_github_sponsors_is_only_mentioned_once_it_is_set_up():
@@ -434,3 +445,171 @@ async def test_the_website_has_a_tab_icon(tmp_path):
     assert png.content_type == "image/png" and png.body.startswith(b"\x89PNG")
     routes = {r.resource.canonical for r in web_app.app().router.routes()}
     assert {"/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"} <= routes
+
+
+# Linking: the login starts only from the code page, in the browser that opened it.
+
+
+class FakePatreon:
+    def __init__(self, user="u1", entitled=True):
+        self.user, self.entitled = user, entitled
+
+    async def exchange_code(self, code):
+        return "token"
+
+    async def check_person(self, token):
+        return self.user, self.entitled
+
+
+async def link_client(tmp_path, aiohttp_client, patreon=None, config=CONFIG):
+    from airbound_relay.web import Web
+
+    db = Database(tmp_path / "db")
+    site = Web(config, db, patreon or FakePatreon(), lambda: None)
+    return db, site, await aiohttp_client(site.app())
+
+
+def browser_of(response):
+    from airbound_relay.web import LINK_COOKIE
+
+    return response.cookies[LINK_COOKIE].value
+
+
+async def log_in(client, site, claim, browser):
+    """Press the button on the code page, then come back from Patreon. The test client keeps
+    no Secure cookie over plain http, so the browser's cookie is sent by hand."""
+    from airbound_relay.web import LINK_COOKIE
+
+    cookie = {"Cookie": f"{LINK_COOKIE}={browser}"}
+    started = await client.post(f"/link/{claim}/login", data={"token": browser}, headers=cookie)
+    assert started.status == 200 and "patreon.com/oauth2/authorize" in await started.text()
+    state = next(s for s, (c, b, _e) in site._states.items() if c == claim and b == browser)
+    return await client.get(f"/patreon/callback?state={state}&code=x", headers=cookie)
+
+
+async def test_the_code_page_gives_the_browser_a_cookie_only_this_site_can_set(tmp_path, aiohttp_client):
+    db, _site, client = await link_client(tmp_path, aiohttp_client)
+    claim, _poll = db.new_claim(INSTALL)
+    page = await client.get(f"/link/{claim}")
+    header = page.headers["Set-Cookie"]
+    assert header.startswith("__Host-airbound-link=") and "Secure" in header and "HttpOnly" in header and "SameSite=Lax" in header
+    assert "Domain" not in header
+    text = await page.text()
+    assert f'action="/link/{claim}/login"' in text and f'value="{browser_of(page)}"' in text
+    assert f'href="/link/{claim}/login"' not in text
+
+
+async def test_a_link_straight_to_the_login_does_nothing(tmp_path, aiohttp_client):
+    from airbound_relay.web import LINK_COOKIE
+
+    db, site, client = await link_client(tmp_path, aiohttp_client)
+    claim, _poll = db.new_claim(INSTALL)
+    assert (await client.get(f"/link/{claim}/login")).status == 405
+    # Another site posting the form: it doesn't know this browser's value.
+    assert (await client.post(f"/link/{claim}/login", data={"token": "x" * 32})).status == 403
+    browser = browser_of(await client.get(f"/link/{claim}"))
+    wrong = await client.post(f"/link/{claim}/login", data={"token": "y" * 32}, headers={"Cookie": f"{LINK_COOKIE}={browser}"})
+    assert wrong.status == 403 and not site._states
+
+
+async def test_the_login_answer_only_counts_in_the_browser_that_started_it(tmp_path, aiohttp_client):
+    from airbound_relay.web import LINK_COOKIE
+
+    db, site, client = await link_client(tmp_path, aiohttp_client)
+    claim, poll = db.new_claim(INSTALL)
+    browser = browser_of(await client.get(f"/link/{claim}"))
+    await client.post(f"/link/{claim}/login", data={"token": browser}, headers={"Cookie": f"{LINK_COOKIE}={browser}"})
+    (state,) = site._states
+    elsewhere = await client.get(f"/patreon/callback?state={state}&code=x", headers={"Cookie": f"{LINK_COOKIE}={'z' * 32}"})
+    assert elsewhere.status == 400 and db.devices_of("u1") == []
+    assert (await log_in(client, site, claim, browser)).status == 200
+    assert len(db.devices_of("u1")) == 1 and db.claim_for_poll(claim, poll)["state"] == "approved"
+
+
+async def test_a_finished_link_cannot_be_used_again(tmp_path, aiohttp_client):
+    from airbound_relay.web import LINK_COOKIE
+
+    db, site, client = await link_client(tmp_path, aiohttp_client)
+    claim, _poll = db.new_claim(INSTALL)
+    browser = browser_of(await client.get(f"/link/{claim}"))
+    assert (await log_in(client, site, claim, browser)).status == 200
+    key_hash = db._db.execute("SELECT key_hash FROM devices").fetchone()[0]
+    again = await client.post(f"/link/{claim}/login", data={"token": browser}, headers={"Cookie": f"{LINK_COOKIE}={browser}"})
+    assert again.status == 404
+    assert db._db.execute("SELECT key_hash FROM devices").fetchone()[0] == key_hash  # the key in use stays valid
+
+
+async def test_at_the_limit_the_person_picks_which_home_assistant_to_replace(tmp_path, aiohttp_client):
+    from airbound_relay.web import LINK_COOKIE
+
+    db, site, client = await link_client(tmp_path, aiohttp_client)
+    db.set_entitled("u1", True)
+    first, key1 = db.link_device("u1", "install-aaaaaaaaaaaaaaaa", 2, now=1)
+    second, key2 = db.link_device("u1", "install-bbbbbbbbbbbbbbbb", 2, now=2)
+    claim, poll = db.new_claim(INSTALL)
+    browser = browser_of(await client.get(f"/link/{claim}"))
+    asked = await log_in(client, site, claim, browser)
+    text = await asked.text()
+    assert first.hostname in text and second.hostname in text and "Replace this one" in text
+    assert db.device_by_key(key1) and db.device_by_key(key2)  # nothing changed yet
+    assert db.claim_for_poll(claim, poll)["state"] == "pending"
+    cookie = {"Cookie": f"{LINK_COOKIE}={browser}"}
+    # Not from another browser, and not a device of someone else.
+    other = await client.post(f"/link/{claim}/replace", data={"token": "q" * 32, "device": second.id}, headers={"Cookie": f"{LINK_COOKIE}={'q' * 32}"})
+    assert other.status == 404 and db.device_by_key(key2)
+    done = await client.post(f"/link/{claim}/replace", data={"token": browser, "device": second.id}, headers=cookie)
+    assert done.status == 200 and db.device_by_key(key1) and db.device_by_key(key2) is None
+    assert db.claim_for_poll(claim, poll)["state"] == "approved"
+    assert (await client.post(f"/link/{claim}/replace", data={"token": browser, "device": first.id}, headers=cookie)).status == 404
+    assert db.device_by_key(key1)
+
+
+async def test_new_addresses_per_membership_are_limited_each_week(tmp_path, aiohttp_client):
+    from dataclasses import replace
+
+    db, site, client = await link_client(tmp_path, aiohttp_client, config=replace(CONFIG, new_devices_per_week=2, max_devices=5))
+    for install in ("install-aaaaaaaaaaaaaaaa", "install-bbbbbbbbbbbbbbbb"):
+        claim, _poll = db.new_claim(install)
+        assert (await log_in(client, site, claim, browser_of(await client.get(f"/link/{claim}")))).status == 200
+    claim, _poll = db.new_claim("install-cccccccccccccccc")
+    assert (await log_in(client, site, claim, browser_of(await client.get(f"/link/{claim}")))).status == 429
+    assert len(db.devices_of("u1")) == 2
+    # Linking one of them again keeps its address and is always allowed.
+    claim, _poll = db.new_claim("install-aaaaaaaaaaaaaaaa")
+    assert (await log_in(client, site, claim, browser_of(await client.get(f"/link/{claim}")))).status == 200
+
+
+def test_rate_limit_counts_an_ipv6_network_as_one_and_forgets_idle_addresses():
+    limit = RateLimit(2, 60)
+    assert limit.allow("2001:db8:1:2::1", now=0) and limit.allow("2001:db8:1:2:ffff::9", now=1)
+    assert not limit.allow("2001:db8:1:2:aaaa::3", now=2)  # the same /64
+    assert limit.allow("2001:db8:1:3::1", now=2)
+    assert limit.allow("203.0.113.5", now=3)
+    limit.allow("203.0.113.6", now=200)
+    assert set(limit._hits) == {"203.0.113.6"}
+
+
+def test_the_running_controller_never_holds_the_cloudflare_token(tmp_path):
+    from airbound_relay import config
+
+    (tmp_path / "cloudflare_token").write_text("cf-secret", encoding="utf-8")
+    assert config.load(tmp_path).cloudflare_token == ""
+    assert config.load(tmp_path, dns_token=True).cloudflare_token == "cf-secret"
+
+
+async def test_ops_report_refuses_odd_tokens_quietly(tmp_path):
+    from dataclasses import replace
+
+    from aiohttp.test_utils import make_mocked_request
+
+    from airbound_relay.web import Web
+
+    site = Web(replace(CONFIG, ops_token="t" * 32), Database(tmp_path / "db"), None, lambda: None)
+    answer = await site.ops_report(make_mocked_request("GET", "/api/v1/ops", headers={"Authorization": "Bearer n\u00f8kkel"}))
+    assert answer.status == 404
+
+
+def test_the_site_key_must_be_text(tmp_path):
+    plugin = Plugin(CONFIG, Database(tmp_path / "db"))
+    assert plugin.handle("Login", {"user": "site", "metas": {"key": ["sitekey"]}})["reject"] is True
+    assert plugin.handle("Login", {"user": "site", "metas": {"key": "sitekey"}})["reject"] is False

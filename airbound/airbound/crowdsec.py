@@ -22,6 +22,8 @@ import shutil
 import time
 from pathlib import Path
 
+from .process import child_env
+
 _LOGGER = logging.getLogger(__name__)
 
 BASE = Path("/data/crowdsec")
@@ -103,12 +105,18 @@ def failed_login_line(ip: str, path: str, user_agent: str, now: datetime.datetim
     """A failed login, written exactly like Home Assistant's own log line."""
     now = now or datetime.datetime.now()
     stamp = now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond // 1000:03d}"
-    agent = (user_agent or "unknown").replace("\n", " ")[:300]
+    # One event, one line: nothing a client sends may start a line of its own.
+    agent = _one_line(user_agent or "unknown")[:300]
+    path = _one_line(path)[:300]
     return (
         f"{stamp} WARNING (MainThread) [homeassistant.components.http.ban] "
         f"Login attempt or request with invalid authentication from {ip} ({ip}). "
         f"Requested URL: '{path}'. ({agent})\n"
     )
+
+
+def _one_line(text: str) -> str:
+    return "".join(c if c.isprintable() else " " for c in text)
 
 
 def log_failed_login(ip: str, path: str, user_agent: str) -> None:
@@ -152,7 +160,7 @@ class CrowdSec:
 
     async def cscli(self, *args: str, check: bool = True) -> str:
         proc = await asyncio.create_subprocess_exec(
-            "cscli", "-c", str(CONFIG), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            "cscli", "-c", str(CONFIG), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=child_env()
         )
         out, err = await proc.communicate()
         if check and proc.returncode != 0:
@@ -209,7 +217,7 @@ class CrowdSec:
         except Exception:
             _LOGGER.exception("CrowdSec setup failed; AirBound keeps running without it")
             return
-        self._process = await asyncio.create_subprocess_exec("crowdsec", "-c", str(CONFIG))
+        self._process = await asyncio.create_subprocess_exec("crowdsec", "-c", str(CONFIG), env=child_env())
         host, port = LAPI.split(":")
         for _ in range(30):  # let the local API come up before Caddy connects to it
             try:

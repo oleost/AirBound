@@ -11,15 +11,24 @@ copied out of a backup can't read or unlink the address.
 
 The relay's certificate authority is pinned: the CA shipped with the add-on is
 the only one frpc trusts, whatever the website sends.
+
+What the website answers is checked before it is used (checked_device,
+checked_address): the address and key end up in Caddy's and frpc's
+configuration, so a website that was taken over must not be able to write
+anything but a plain name under its own domain there.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
+
+from .settings import valid_hostname
 
 SERVICE = os.environ.get("AIRBOUND_HOSTED_SERVICE", "https://airbound.dev")
 RELAY_HOST = os.environ.get("AIRBOUND_HOSTED_RELAY", "relay.airbound.dev")
@@ -30,8 +39,37 @@ CA_FILE = Path(__file__).parent / "hosted_relay_ca.pem"
 TIMEOUT = ClientTimeout(total=15)
 
 
+DOMAIN = (urlsplit(SERVICE).hostname or "").lower()  # addresses are always under the website's own domain
+_PLAIN = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
 class HostedError(Exception):
     pass
+
+
+def plain(value: object) -> bool:
+    """Only letters, digits, dashes and underscores: safe inside a configuration file."""
+    return isinstance(value, str) and bool(_PLAIN.fullmatch(value))
+
+
+def checked_address(hostname: object, domain: object) -> tuple[str, str]:
+    """(hostname, domain) if it is one plain name under the hosted relay's own domain."""
+    if not (isinstance(hostname, str) and isinstance(domain, str) and valid_hostname(hostname) and domain.lower() == DOMAIN):
+        raise HostedError("The hosted relay sent an address AirBound doesn't accept. Nothing was changed; try again later.")
+    return hostname, DOMAIN
+
+
+def checked_device(device: object) -> dict:
+    """{id, key, hostname, domain} from a finished link request, refused unless every value is plain."""
+    if not isinstance(device, dict) or not (plain(device.get("id")) and plain(device.get("key"))):
+        raise HostedError("The hosted relay sent a key AirBound doesn't accept. Nothing was changed; try again later.")
+    hostname, domain = checked_address(device.get("hostname"), device.get("domain"))
+    return {"id": device["id"], "key": device["key"], "hostname": hostname, "domain": domain}
+
+
+def web_link(url: object) -> str:
+    """A link from the hosted relay for the panel to show; only https, so it can't run script."""
+    return url if isinstance(url, str) and url.startswith("https://") and len(url) < 500 else ""
 
 
 async def _call(

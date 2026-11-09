@@ -10,6 +10,7 @@ change (fair use, see limits.py), the next heartbeat makes the tunnel reconnect.
 
 from __future__ import annotations
 
+import secrets
 import time
 
 from . import access
@@ -40,7 +41,9 @@ class Plugin:
     def _identify(self, user: str, metas: dict | None, now: float) -> tuple[Device | None, str]:
         """(device, "") if this client may be connected, else (None, reason)."""
         key = (metas or {}).get("key", "")
-        if self._config.site_key and key == self._config.site_key and user == "site":
+        if not isinstance(key, str):
+            key = ""
+        if self._config.site_key and user == "site" and secrets.compare_digest(key.encode(), self._config.site_key.encode()):
             return None, ""
         device = self._db.device_by_key(key) if key else None
         if device is None or device.id != user:

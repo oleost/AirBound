@@ -5,6 +5,13 @@ shows a short code, the person opens the link page, checks the code, logs in
 with Patreon or GitHub, and Home Assistant picks up its key. The code check stops someone
 from sending a stranger a link that would tie the stranger's membership to the
 sender's Home Assistant.
+
+The login only starts from the page that shows the code, in the browser that
+opened it: the page sets a cookie and its buttons post the same value back, and
+the login's answer is only accepted in that browser. So a link straight to the
+login, or a page on another site, can't skip the code. And a membership that
+already has all its Home Assistants never loses one by itself: the person picks
+which one the new one replaces.
 """
 
 from __future__ import annotations
@@ -12,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
+import ipaddress
 import logging
 import re
 import secrets
@@ -23,7 +31,7 @@ from aiohttp import web
 
 from . import access, ops, pages
 from .config import Config
-from .db import Database, Device
+from .db import Database, Device, DeviceLimit
 from . import github as gh
 from .github import GitHub, GitHubError
 from .patreon import Patreon, PatreonError, authorize_url, valid_signature
@@ -35,6 +43,10 @@ TOUCH_ICON = Path(__file__).with_name("apple-touch-icon.png")
 SERVER_NAME = "airbound-hosted-relay"  # the name in the relay's certificate that frpc expects
 INSTALL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 OAUTH_STATE_TTL = 900
+# __Host-: only this exact site can set it, so no address under the domain (each is someone's Home Assistant) can plant one.
+LINK_COOKIE = "__Host-airbound-link"
+BROWSER_RE = re.compile(r"[A-Za-z0-9_-]{20,64}")
+WEEK = 7 * 86400
 
 
 def claim_code(claim_id: str) -> str:
@@ -45,6 +57,17 @@ def claim_code(claim_id: str) -> str:
     return "".join(chars[:3]) + "-" + "".join(chars[3:])
 
 
+def limit_key(client: str) -> str:
+    """Who a request counts against: the address, or for IPv6 its /64, since one customer has all of that."""
+    try:
+        address = ipaddress.ip_address(client)
+    except ValueError:
+        return client[:64]
+    if address.version == 6:
+        return str(ipaddress.ip_network((address, 64), strict=False).network_address)
+    return str(address)
+
+
 class RateLimit:
     """At most `count` requests per `window` seconds per client address."""
 
@@ -52,10 +75,19 @@ class RateLimit:
         self._count = count
         self._window = window
         self._hits: dict[str, deque] = defaultdict(deque)
+        self._swept = 0.0
+
+    def _sweep(self, now: float) -> None:
+        """Forget addresses with nothing left in the window, so the table can't grow without end."""
+        self._swept = now
+        for client in [c for c, hits in self._hits.items() if not hits or hits[-1] < now - self._window]:
+            del self._hits[client]
 
     def allow(self, client: str, now: float | None = None) -> bool:
         now = time.monotonic() if now is None else now
-        hits = self._hits[client]
+        if now - self._swept > self._window:
+            self._sweep(now)
+        hits = self._hits[limit_key(client)]
         while hits and hits[0] < now - self._window:
             hits.popleft()
         if len(hits) >= self._count:
@@ -71,7 +103,8 @@ class Web:
         self._patreon = patreon
         self._github = github
         self._sync_soon = sync_soon
-        self._states: dict[str, tuple[str, float]] = {}
+        self._states: dict[str, tuple[str, str, float]] = {}  # OAuth state -> (claim, browser, expires)
+        self._choices: dict[str, tuple[str, str, float]] = {}  # claim -> (account, browser, expires): picking the device to replace
         self._claims_limit = RateLimit(10, 3600)
         self._poll_limit = RateLimit(600, 3600)
 
@@ -91,10 +124,11 @@ class Web:
         app.router.add_delete("/api/v1/device", self.device_unlink)
         app.router.add_get("/api/v1/ops", self.ops_report)
         app.router.add_get("/link/{claim}", self.link_page)
-        app.router.add_get("/link/{claim}/login", self.link_login)
+        app.router.add_post("/link/{claim}/login", self.link_login)
+        app.router.add_post("/link/{claim}/replace", self.link_replace)
         app.router.add_get("/patreon/callback", self.callback)
         app.router.add_post("/patreon/webhook", self.webhook)
-        app.router.add_get("/link/{claim}/github", self.link_github)
+        app.router.add_post("/link/{claim}/github", self.link_github)
         app.router.add_get("/github/callback", self.github_callback)
         app.router.add_post("/github/webhook", self.github_webhook)
         return app
@@ -213,60 +247,117 @@ class Web:
     async def ops_report(self, request: web.Request) -> web.Response:
         """The relay's health for the weekly maintenance report; only with the operator's token."""
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        if not self._config.ops_token or not secrets.compare_digest(token, self._config.ops_token):
+        if not self._config.ops_token or not secrets.compare_digest(token.encode(), self._config.ops_token.encode()):
             return web.json_response({"error": "not found"}, status=404)
         days = await asyncio.to_thread(ops.certificate_days_left, "127.0.0.1", self._config.domain)
         return web.json_response(ops.report(self._config, self._db, days))  # the database stays on this thread
 
     # Pages the person sees
 
+    @staticmethod
+    def _browser(request: web.Request) -> str:
+        """The value this browser got from the code page; empty if it never opened one."""
+        value = request.cookies.get(LINK_COOKIE, "")
+        return value if BROWSER_RE.fullmatch(value) else ""
+
+    async def _posted_from_code_page(self, request: web.Request) -> str:
+        """The browser's value if this request was posted by a button on our own page in that browser, else empty."""
+        browser = self._browser(request)
+        token = str((await request.post()).get("token", ""))
+        return browser if browser and secrets.compare_digest(token.encode(), browser.encode()) else ""
+
     async def link_page(self, request: web.Request) -> web.Response:
         claim = self._db.claim(request.match_info["claim"])
         if claim is None or claim["state"] in ("approved", "delivered"):
             return self._page("Link expired", pages.expired(), status=404)
         github = bool(self._github and self._github.enabled)
-        return self._page("Link your Home Assistant", pages.confirm_code(claim["id"], claim_code(claim["id"]), github=github))
+        browser = self._browser(request) or secrets.token_urlsafe(24)
+        response = self._page("Link your Home Assistant", pages.confirm_code(claim["id"], claim_code(claim["id"]), browser, github=github))
+        response.set_cookie(LINK_COOKIE, browser, max_age=3600, path="/", secure=True, httponly=True, samesite="Lax")
+        return response
 
-    def _new_state(self, claim_id: str) -> str:
+    def _new_state(self, claim_id: str, browser: str) -> str:
         now = time.time()
-        self._states = {s: v for s, v in self._states.items() if v[1] > now}
+        self._states = {s: v for s, v in self._states.items() if v[2] > now}
         state = secrets.token_urlsafe(24)
-        self._states[state] = (claim_id, now + OAUTH_STATE_TTL)
+        self._states[state] = (claim_id, browser, now + OAUTH_STATE_TTL)
         return state
 
     def _claim_for_state(self, request: web.Request):
-        claim_id, expires = self._states.pop(request.query.get("state", ""), ("", 0))
-        claim = self._db.claim(claim_id) if expires > time.time() else None
-        return claim if claim is not None and "code" in request.query else None
+        """(claim, browser) for a login's answer, only in the browser that started that login."""
+        claim_id, browser, expires = self._states.pop(request.query.get("state", ""), ("", "", 0))
+        if expires <= time.time() or not browser or not secrets.compare_digest(self._browser(request).encode(), browser.encode()):
+            return None, ""
+        claim = self._db.claim(claim_id)
+        if claim is None or claim["state"] not in ("pending", "needs_membership") or "code" not in request.query:
+            return None, ""
+        return claim, browser
+
+    async def _start_login(self, request: web.Request, where: str, authorize) -> web.Response:
+        claim = self._db.claim(request.match_info["claim"])
+        if claim is None or claim["state"] not in ("pending", "needs_membership"):
+            return self._page("Link expired", pages.expired(), status=404)
+        browser = await self._posted_from_code_page(request)
+        if not browser:
+            return self._page("Open the link again", pages.reopen(claim["id"]), status=403)
+        url = authorize(self._config, self._new_state(claim["id"], browser))
+        # A page that sends the browser on, not a redirect: the browser treats a redirect after a
+        # form as part of the form, and the content security policy would have to list every hop.
+        return web.Response(
+            text=pages.page(f"Continue with {where}", pages.forward(url, where), self._config, head=pages.refresh(url)),
+            content_type="text/html",
+            headers=pages.HEADERS,
+        )
 
     async def link_login(self, request: web.Request) -> web.Response:
-        claim = self._db.claim(request.match_info["claim"])
-        if claim is None:
-            return self._page("Link expired", pages.expired(), status=404)
-        raise web.HTTPFound(authorize_url(self._config, self._new_state(claim["id"])))
+        return await self._start_login(request, "Patreon", authorize_url)
 
     async def link_github(self, request: web.Request) -> web.Response:
-        claim = self._db.claim(request.match_info["claim"])
-        if claim is None or not (self._github and self._github.enabled):
+        if not (self._github and self._github.enabled):
             return self._page("Link expired", pages.expired(), status=404)
-        raise web.HTTPFound(gh.authorize_url(self._config, self._new_state(claim["id"])))
+        return await self._start_login(request, "GitHub", gh.authorize_url)
 
-    def _finish_link(self, claim, account: str, entitled: bool) -> web.Response:
+    def _link(self, claim, account: str, replace: str | None = None) -> web.Response:
+        device, key = self._db.link_device(account, claim["install_id"], self._config.max_devices, replace=replace)
+        self._db.set_claim(claim["id"], "approved", patreon_id=account, device_id=device.id, device_key=key)
+        _LOGGER.info("Linked device %s", device.id)
+        return self._page("Linked", pages.linked(f"{device.hostname}.{self._config.domain}"))
+
+    def _finish_link(self, claim, account: str, entitled: bool, browser: str) -> web.Response:
         """After either login: link the Home Assistant, or ask for the support that gives access."""
         self._db.set_entitled(account, entitled)
         state_now = access.state(self._db.account(account), account, self._config.free_users, self._config.grace_days)
         if state_now == access.EXPIRED:
             self._db.set_claim(claim["id"], "needs_membership", patreon_id=account)
             if gh.is_github(account):
-                return self._page("Sponsor AirBound", pages.needs_sponsorship(self._config, claim["id"]))
-            return self._page("Start your membership", pages.needs_membership(self._config, claim["id"]))
-        device, key = self._db.link_device(account, claim["install_id"], self._config.max_devices)
-        self._db.set_claim(claim["id"], "approved", patreon_id=account, device_id=device.id, device_key=key)
-        _LOGGER.info("Linked device %s", device.id)
-        return self._page("Linked", pages.linked(f"{device.hostname}.{self._config.domain}"))
+                return self._page("Sponsor AirBound", pages.needs_sponsorship(self._config, claim["id"], browser))
+            return self._page("Start your membership", pages.needs_membership(self._config, claim["id"], browser))
+        devices = self._db.devices_of(account)
+        if not any(d.install_id == claim["install_id"] for d in devices):
+            now = time.time()
+            if self._db.new_devices_since(account, now - WEEK) >= self._config.new_devices_per_week:
+                return self._page("Too many new addresses", pages.too_many(), status=429)
+            if len(devices) >= self._config.max_devices:
+                self._choices = {c: v for c, v in self._choices.items() if v[2] > now}
+                self._choices[claim["id"]] = (account, browser, now + OAUTH_STATE_TTL)
+                return self._page("Choose which one to replace", pages.choose_device(self._config, claim["id"], browser, devices, now))
+        return self._link(claim, account)
+
+    async def link_replace(self, request: web.Request) -> web.Response:
+        """The person picked which of their Home Assistants the new one replaces."""
+        claim = self._db.claim(request.match_info["claim"])
+        browser = await self._posted_from_code_page(request)
+        account, chose_in, expires = self._choices.get(claim["id"] if claim is not None else "", ("", "", 0))
+        if claim is None or claim["state"] != "pending" or not browser or browser != chose_in or expires <= time.time():
+            return self._page("Link expired", pages.expired(), status=404)
+        del self._choices[claim["id"]]
+        try:
+            return self._link(claim, account, replace=str((await request.post()).get("device", "")))
+        except DeviceLimit:
+            return self._page("Link expired", pages.expired(), status=404)
 
     async def callback(self, request: web.Request) -> web.Response:
-        claim = self._claim_for_state(request)
+        claim, browser = self._claim_for_state(request)
         if claim is None:
             return self._page("Link expired", pages.expired(), status=400)
         try:
@@ -275,10 +366,10 @@ class Web:
         except PatreonError as err:
             _LOGGER.warning("Patreon login failed: %s", err)
             return self._page("Something went wrong", pages.error("Patreon didn't confirm the login. Please try again."), status=502)
-        return self._finish_link(claim, patreon_id, entitled)
+        return self._finish_link(claim, patreon_id, entitled, browser)
 
     async def github_callback(self, request: web.Request) -> web.Response:
-        claim = self._claim_for_state(request)
+        claim, browser = self._claim_for_state(request)
         if claim is None or not (self._github and self._github.enabled):
             return self._page("Link expired", pages.expired(), status=400)
         try:
@@ -287,7 +378,7 @@ class Web:
         except GitHubError as err:
             _LOGGER.warning("GitHub login failed: %s", err)
             return self._page("Something went wrong", pages.error("GitHub didn't confirm the login. Please try again."), status=502)
-        return self._finish_link(claim, account, entitled)
+        return self._finish_link(claim, account, entitled, browser)
 
     async def github_webhook(self, request: web.Request) -> web.Response:
         body = await request.read()

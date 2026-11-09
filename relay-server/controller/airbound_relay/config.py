@@ -40,6 +40,7 @@ class Config:
     site_key: str = ""  # lets the local frpc publish airbound.dev itself
     free_users: frozenset[str] = field(default_factory=frozenset)  # Patreon user ids with free access
     max_devices: int = 2  # Home Assistants per membership
+    new_devices_per_week: int = 4  # new addresses per membership in 7 days; each one costs a certificate from Let's Encrypt's weekly allowance for the domain
     bandwidth: str = "4MB"  # per Home Assistant, each direction (frp syntax)
     grace_days: int = 3  # access after a membership lapses, to fix a failed payment
     device_monthly_gb: int = 300  # fair use per Home Assistant and month (in + out)
@@ -97,7 +98,9 @@ class Config:
         return self.github_sponsor_url if account.startswith("gh:") else self.manage_url
 
 
-def load(config_dir: Path = CONFIG_DIR) -> Config:
+def load(config_dir: Path = CONFIG_DIR, dns_token: bool = False) -> Config:
+    """The settings. The Cloudflare token can change the whole domain, so only the one-off
+    `dns` command reads it (dns_token); the running controller never holds it."""
     env = {
         **read_env_file(config_dir / "controller.env"),
         **read_env_file(config_dir / "patreon.env"),
@@ -117,10 +120,11 @@ def load(config_dir: Path = CONFIG_DIR) -> Config:
         client_secret=env.get("PATREON_CLIENT_SECRET", ""),
         creator_access_token=env.get("PATREON_CREATOR_ACCESS_TOKEN", ""),
         creator_refresh_token=env.get("PATREON_CREATOR_REFRESH_TOKEN", ""),
-        cloudflare_token=token_file.read_text().strip() if token_file.exists() else "",
+        cloudflare_token=token_file.read_text().strip() if dns_token and token_file.exists() else "",
         site_key=env.get("SITE_KEY", ""),
         free_users=frozenset(free),
         max_devices=int(env.get("MAX_DEVICES", "2")),
+        new_devices_per_week=int(env.get("NEW_DEVICES_PER_WEEK", "4")),
         bandwidth=env.get("BANDWIDTH", "4MB"),
         grace_days=int(env.get("GRACE_DAYS", "3")),
         device_monthly_gb=int(env.get("DEVICE_MONTHLY_GB", "300")),

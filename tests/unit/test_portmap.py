@@ -59,3 +59,20 @@ def test_router_description_with_a_dtd_is_refused():
 def test_delete_port_mapping_body():
     body = soap_body("urn:svc", "DeletePortMapping", {"NewRemoteHost": "", "NewExternalPort": 9443, "NewProtocol": "TCP"})
     assert '<u:DeletePortMapping xmlns:u="urn:svc"><NewRemoteHost></NewRemoteHost><NewExternalPort>9443</NewExternalPort>' in body
+
+
+def test_upnp_addresses_must_be_devices_on_the_home_network():
+    from airbound.portmap import on_home_network
+
+    assert on_home_network("http://192.168.1.1:5000/rootDesc.xml") and on_home_network("http://10.0.0.1/ctl")
+    for url in (
+        "http://supervisor/core/api",
+        "http://homeassistant:8123/",
+        "http://127.0.0.1:2019/config",
+        "http://203.0.113.9/x",
+        "https://192.168.1.1/x",
+        "http://169.254.169.254/latest",
+        "file:///data/settings.json",
+        "",
+    ):
+        assert not on_home_network(url), url

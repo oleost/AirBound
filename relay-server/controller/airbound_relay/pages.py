@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from html import escape
 
 from .config import Config
@@ -30,16 +31,30 @@ h1{font-size:24px;margin:0 0 12px}h2{font-size:18px;margin:20px 0 8px}p{margin:0
 .code{font:600 32px/1.2 ui-monospace,Consolas,monospace;letter-spacing:4px;text-align:center;padding:16px;border:2px dashed var(--line);border-radius:10px;margin:16px 0}
 .button{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:4px 8px 4px 0}
 .button.secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+form{display:inline}button.button{border:0;font:inherit;font-weight:600;cursor:pointer}button.button.secondary{border:1px solid var(--accent)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 footer{font-size:14px;color:var(--muted);text-align:center}footer a{color:inherit}
 .card a:not(.button){color:var(--accent)}
 ul{padding-left:20px}li{margin-bottom:6px}code{font-family:ui-monospace,Consolas,monospace}
 """
 
 
-def page(title: str, body: str, config: Config) -> str:
+def post_button(action: str, token: str, label: str, secondary: bool = False, **fields: str) -> str:
+    """A button that posts back to this site. The token is this browser's cookie value, which only our own pages know."""
+    hidden = "".join(f'<input type="hidden" name="{escape(k)}" value="{escape(v)}">' for k, v in {"token": token, **fields}.items())
+    kind = "button secondary" if secondary else "button"
+    return f'<form method="post" action="{escape(action)}">{hidden}<button class="{kind}" type="submit">{escape(label)}</button></form>'
+
+
+def refresh(url: str) -> str:
+    """For the page's head: go on to url right away."""
+    return f'<meta http-equiv="refresh" content="0;url={escape(url)}">'
+
+
+def page(title: str, body: str, config: Config, head: str = "") -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{escape(title)} · AirBound</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><style>{STYLE}</style></head>
+<title>{escape(title)} · AirBound</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180"><link rel="apple-touch-icon" href="/apple-touch-icon.png">{head}<style>{STYLE}</style></head>
 <body><main><header>{LOGO}<b>AirBound</b></header>{body}
 <footer><a href="/">Home</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> ·<a href="https://github.com/oleost/AirBound">Source code</a> · <a href="{escape(config.manage_url)}">Patreon</a></footer>
 </main></body></html>"""
@@ -134,34 +149,34 @@ def terms(config: Config) -> str:
 <p>These terms can change; the date above shows the latest version, and bigger changes are posted on Patreon. Questions go to <a href="https://github.com/oleost/AirBound/issues">GitHub issues</a>. To report abuse of the relay, such as attacks or illegal content coming from its address, write to <a href="mailto:abuse@{escape(config.domain)}">abuse@{escape(config.domain)}</a>. See also the <a href="/privacy">privacy page</a>.</p></div>"""
 
 
-def confirm_code(claim_id: str, code: str, github: bool = False) -> str:
-    github_button = f'<a class="button" href="/link/{escape(claim_id)}/github">Continue with GitHub Sponsors</a>' if github else ""
+def confirm_code(claim_id: str, code: str, token: str, github: bool = False) -> str:
+    github_button = post_button(f"/link/{claim_id}/github", token, "Continue with GitHub Sponsors") if github else ""
     return f"""<div class="card"><h1>Link your Home Assistant</h1>
 <p>Check that AirBound in your Home Assistant shows this code:</p>
 <div class="code">{escape(code)}</div>
 <p class="muted">If you didn't start this yourself, or the code is different, close this page. Someone may be trying to use your membership.</p>
 <p>The code matches? Log in where you support AirBound:</p>
-<a class="button" href="/link/{escape(claim_id)}/login">Continue with Patreon</a>
+{post_button(f"/link/{claim_id}/login", token, "Continue with Patreon")}
 {github_button}
 <p class="muted">By continuing you accept the <a href="/terms">terms</a>: AirBound is a hobby project, and the relay comes with no guarantee.</p></div>"""
 
 
-def needs_membership(config: Config, claim_id: str) -> str:
+def needs_membership(config: Config, claim_id: str, token: str) -> str:
     return f"""<div class="card"><h1>One more step: support AirBound on Patreon</h1>
 <p>You're logged in, but your Patreon account doesn't have the <b>Relay</b> membership yet. It supports AirBound's development, and access to the relay comes with it as a thank-you. It starts with a 7-day free trial, and you can cancel any time.</p>
 <p class="muted">The relay is a best-effort hobby service with no guarantee of uptime. See the <a href="/terms">terms</a>.</p>
 <a class="button" href="{escape(config.join_url)}" target="_blank" rel="noopener">Start the free trial on Patreon</a>
-<a class="button secondary" href="/link/{escape(claim_id)}/login">I've joined: check again</a>
+{post_button(f"/link/{claim_id}/login", token, "I've joined: check again", secondary=True)}
 <p class="muted">Joining on Patreon's iPhone app doesn't offer the trial. Use the browser.</p></div>"""
 
 
-def needs_sponsorship(config: Config, claim_id: str) -> str:
+def needs_sponsorship(config: Config, claim_id: str, token: str) -> str:
     dollars = config.github_min_cents / 100
     amount = f"${dollars:g}"
     return f"""<div class="card"><h1>One more step: sponsor AirBound on GitHub</h1>
 <p>You're logged in, but your GitHub account doesn't sponsor <b>{escape(config.github_sponsorable)}</b> yet. A monthly sponsorship of {escape(amount)} or more supports AirBound's development, and access to the relay comes with it as a thank-you. You can cancel any time.</p>
 <a class="button" href="{escape(config.github_sponsor_url)}" target="_blank" rel="noopener">Sponsor on GitHub</a>
-<a class="button secondary" href="/link/{escape(claim_id)}/github">I've sponsored: check again</a>
+{post_button(f"/link/{claim_id}/github", token, "I've sponsored: check again", secondary=True)}
 <p class="muted">Choose a monthly tier; a one-time sponsorship doesn't give access. The relay is a best-effort hobby service with no guarantee of uptime. See the <a href="/terms">terms</a>.</p></div>"""
 
 
@@ -169,6 +184,46 @@ def linked(fqdn: str) -> str:
     return f"""<div class="card"><h1>Done! Your Home Assistant is linked</h1>
 <p>Its new address is <b>{escape(fqdn)}</b>.</p>
 <p>Go back to AirBound in Home Assistant. It continues on its own; you can close this page.</p></div>"""
+
+
+def forward(url: str, where: str) -> str:
+    return f"""<div class="card"><h1>Taking you to {escape(where)}…</h1>
+<p>If nothing happens, continue here:</p>
+<a class="button" href="{escape(url)}">Continue with {escape(where)}</a></div>"""
+
+
+def reopen(claim_id: str) -> str:
+    return f"""<div class="card"><h1>Open the link page again</h1>
+<p>The login has to start from the page that shows your code, in the same browser. That keeps anyone else from starting it for you.</p>
+<a class="button" href="/link/{escape(claim_id)}">Show the code</a>
+<p class="muted">If you didn't start this yourself in Home Assistant, close this page.</p></div>"""
+
+
+def _last_seen(device, now: float) -> str:
+    if not device.last_seen:
+        return "never connected"
+    if now - device.last_seen < 600:
+        return "connected now"
+    return "last connected " + datetime.datetime.fromtimestamp(device.last_seen, datetime.UTC).strftime("%d %B %Y").lstrip("0")
+
+
+def choose_device(config: Config, claim_id: str, token: str, devices: list, now: float) -> str:
+    """The membership has all its Home Assistants: the person says which one the new one replaces."""
+    rows = "".join(
+        f"""<div class="row"><div><b>{escape(d.hostname)}.{escape(config.domain)}</b><br><span class="muted">{escape(_last_seen(d, now))}</span></div>
+{post_button(f"/link/{claim_id}/replace", token, "Replace this one", secondary=True, device=d.id)}</div>"""
+        for d in devices
+    )
+    return f"""<div class="card"><h1>Which Home Assistant should this one replace?</h1>
+<p>Your support covers {config.max_devices} Home Assistant installations, and you already have that many linked. The new one gets its own new address; the one you replace stops working from outside, and its address is gone for good.</p>
+{rows}
+<p class="muted" style="margin-top:16px">Don't want to replace any of them? Close this page; nothing has changed. If you didn't start this yourself in Home Assistant, close it too: someone may be trying to use your membership.</p></div>"""
+
+
+def too_many() -> str:
+    return """<div class="card"><h1>Too many new addresses this week</h1>
+<p>Each new address needs its own certificate, and there is a weekly limit on those for everyone together. Your membership has had several new addresses in the last 7 days, so this one has to wait a few days. Nothing has changed for the Home Assistants you already linked.</p>
+<p class="muted">Linking a Home Assistant again after a restore keeps its address and isn't counted. If this stops you from something reasonable, ask on <a href="https://github.com/oleost/AirBound/issues">GitHub</a>.</p></div>"""
 
 
 def expired() -> str:
