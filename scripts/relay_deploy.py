@@ -29,7 +29,8 @@ BACKUP_PATHS = ("/opt/airbound-controller/airbound_relay /opt/airbound-controlle
                 "/etc/airbound-firewall.nft /etc/ssh/sshd_config.d/10-airbound.conf")
 # Stopping the unit (not just deleting its table) lets the installer's "enable --now" load the firewall again.
 def safety_net(seconds: int = 600) -> str:
-    return (f"systemd-run --quiet --unit=airbound-deploy-safety --on-active={seconds} sh -c "
+    # Timers fire up to a minute late unless told otherwise (AccuracySec defaults to 1min).
+    return (f"systemd-run --quiet --unit=airbound-deploy-safety --on-active={seconds} --timer-property=AccuracySec=1s sh -c "
             "'systemctl disable --now airbound-firewall; nft delete table inet airbound_firewall 2>/dev/null; "
             "rm -f /etc/ssh/sshd_config.d/10-airbound.conf; systemctl reload ssh'")
 
