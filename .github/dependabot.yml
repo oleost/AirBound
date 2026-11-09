@@ -9,6 +9,11 @@ updates:
     schedule: { interval: weekly, day: monday }
     groups:
       actions: { patterns: ["*"] }
+    ignore:
+      # With 4.8.0 ghcr refused the image pushes (permission_denied: write_package)
+      # although the login succeeded; 4.7.0 works. Try a release after 4.8.0.
+      - dependency-name: docker/login-action
+        versions: ["4.8.0"]
 
   - package-ecosystem: docker
     directory: /airbound
