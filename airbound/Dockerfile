@@ -13,12 +13,12 @@ FROM crowdsecurity/crowdsec:v1.8.2@sha256:65b74942f7e7ed5c60fde4ac15fc4ba715904c
 
 FROM python:3.13.18-alpine3.24@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8 AS frpc
 ARG BUILD_ARCH=amd64
-ARG FRP_VERSION=0.71.1
+ARG FRP_VERSION=0.72.0
 # frp built from source with the newest Go by .github/workflows/frp.yaml
-ARG FRP_RELEASE=frp-v0.71.1-airbound2
+ARG FRP_RELEASE=frp-v0.72.0-airbound1
 RUN case "$BUILD_ARCH" in \
-      amd64) ARCH=amd64; SHA=280822e2c51637d4f4c93fab510bc57fcf9063d1478b4b7adf6eeb5cdbc554e6 ;; \
-      aarch64) ARCH=arm64; SHA=8ddeff2ca3d4236e75c96e66a5178881582b5d59c32ee48b7ecb214a9e39beaa ;; \
+      amd64) ARCH=amd64; SHA=f9224a8ed735cc8a3d78fe3cd37e9b0a7c77ed285207763efb47e3a532d6f243 ;; \
+      aarch64) ARCH=arm64; SHA=721c4866938d54ad266f4b8e49cfae615af71651043c1abe1625ce2437e50708 ;; \
       *) echo "unsupported arch $BUILD_ARCH" && exit 1 ;; \
     esac \
     && wget -q -O /tmp/frp.tgz "https://github.com/oleost/AirBound/releases/download/${FRP_RELEASE}/frp_${FRP_VERSION}_linux_${ARCH}.tar.gz" \

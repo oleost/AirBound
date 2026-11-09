@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.4
+
+- Updated frp, which carries AirBound's connection, to 0.72.0. It fixes a fault where a closed connection could keep a processor core busy, and reconnects faster after a dropped connection.
+- Security updates to Caddy, which serves your address.
+- **If you run your own relay server:** open the **Relay server** step in AirBound and run its command on the server again to get the new frp there too. Your connection keeps working while you wait.
+- With the hosted relay, or through your router, there is nothing you have to do.
+
 ## 0.15.3
 
 - Security updates to the parts AirBound is built on: frp, Caddy with its CrowdSec bouncer, CrowdSec and the Python base image.
