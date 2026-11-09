@@ -10,7 +10,8 @@ Refuses unless:
 - the Trivy and govulncheck runs are successful and less than 7 days old;
 - no critical image finding is open (unless accepted, with a reason);
 - scripts/e2e.py passed for this exact commit, and, when relay-server/ or the
-  hardening changed since the last release, scripts/relay_staging.py too.
+  hardening or scripts/relay_deploy.py changed since the last release,
+  scripts/relay_staging.py too.
 Then moves main to this commit (fast-forward only), tags it, creates a GitHub
 release, and runs scripts/relay_deploy.py when the relay changed. Users'
 Home Assistants follow main; the test VM follows next.
@@ -30,7 +31,7 @@ from deploy import image_published  # noqa: E402
 
 REPO = "oleost/AirBound"
 SCAN_MAX_AGE_DAYS = 7
-RELAY_PATHS = ["relay-server", "airbound/airbound/vps_harden.sh"]
+RELAY_PATHS = ["relay-server", "airbound/airbound/vps_harden.sh", "scripts/relay_deploy.py"]  # relay staging drills relay_deploy.py too
 
 
 def gh_api(path: str):

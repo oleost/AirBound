@@ -7,9 +7,10 @@ Cloudflare), then checks: every service runs inside its sandbox, the firewall
 is up, the frp plugin refuses fake clients and a real key from another machine
 (a copied backup), the controller reads the hub's
 traffic counters, the health endpoint answers, and after a reboot the server
-finishes booting with no ordering cycles and the firewall up. The VPS is stopped
-afterwards. The result goes to test-results/relay-staging-<commit>.json, which
-scripts/release.py requires when relay-server/ changed.
+finishes booting with no ordering cycles and the firewall up. Last it drills
+scripts/relay_deploy.py: a deploy, a rollback, and the safety net firing and
+being closed again. The VPS is stopped afterwards. The result goes to test-results/relay-staging-<commit>.json, which
+scripts/release.py requires when relay-server/ or relay_deploy.py changed.
 """
 
 from __future__ import annotations
@@ -18,8 +19,10 @@ import json
 import re
 import secrets
 import sys
+import time
 
-from testenv import ROOT, TestVPS, begin_run, relay_tarball, save_result
+import relay_deploy
+from testenv import ROOT, Remote, TestVPS, begin_run, relay_tarball, save_result
 
 UNITS = ("airbound-controller", "airbound-hub", "airbound-web", "airbound-site")
 MAX_EXPOSURE = 2.5  # systemd-analyze security; the units score about 1.7-1.9
@@ -142,6 +145,35 @@ def main() -> None:
         check("reboot: firewall up", firewall == "1", "drop policy active" if firewall == "1" else "airbound_firewall table missing")
         states = {u: vps.sh(f"systemctl is-active {u}", check=False).strip() for u in UNITS}
         check("reboot: services", all(s == "active" for s in states.values()), ", ".join(f"{u.removeprefix('airbound-')} {s}" for u, s in states.items()))
+
+        # scripts/relay_deploy.py as it runs against airbound.dev: one connection, a deploy, a rollback, the safety net.
+        with Remote(vps.target, vps.key) as remote:
+            def deployed(simulate_failure: bool = False) -> str:
+                try:
+                    return "deployed: " + relay_deploy.deploy(remote, None, simulate_failure=simulate_failure)
+                except relay_deploy.DeployFailed as err:
+                    return str(err)
+
+            outcome = deployed()
+            timer = remote.run("systemctl is-active airbound-deploy-safety.timer", check=False).strip()
+            check("deploy", outcome.startswith("deployed") and timer != "active", f"{outcome}; safety net {timer}")
+
+            remote.run("echo staging-marker > /opt/airbound-controller/BUILD")  # the rollback must bring this back
+            outcome = deployed(simulate_failure=True)
+            build = remote.run("cat /opt/airbound-controller/BUILD", check=False).strip()
+            timer = remote.run("systemctl is-active airbound-deploy-safety.timer", check=False).strip()
+            check("deploy: rollback", "rolled back: healthy again" in outcome and build == "staging-marker" and timer != "active",
+                  f"{outcome.split('; ')[-1]}; old files {'back' if build == 'staging-marker' else 'NOT back: ' + build}; safety net {timer}")
+
+            remote.run(relay_deploy.safety_net(seconds=20))
+            time.sleep(40)
+            opened = remote.run("systemctl is-active airbound-firewall; nft list table inet airbound_firewall >/dev/null 2>&1 && echo table; "
+                                "test -f /etc/ssh/sshd_config.d/10-airbound.conf && echo sshconf", check=False).split()
+            check("deploy: safety net opens", opened == ["inactive"], " ".join(opened) or "nothing left")
+            remote.run("systemctl enable --now airbound-firewall")  # the recovery MAINTENANCE.md describes, then a deploy
+            outcome = deployed()
+            closed = remote.run("nft list chain inet airbound_firewall input | grep -c 'policy drop'; sshd -T | grep -c '^passwordauthentication no'", check=False).split()
+            check("deploy: recovery", outcome.startswith("deployed") and closed == ["1", "1"], f"{outcome}; firewall and SSH hardening {'back' if closed == ['1', '1'] else 'MISSING'}")
 
     path = save_result("relay-staging", results)
     failed = [k for k, v in results.items() if not v["ok"]]

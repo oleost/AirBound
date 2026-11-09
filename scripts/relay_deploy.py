@@ -28,9 +28,14 @@ BACKUP_PATHS = ("/opt/airbound-controller/airbound_relay /opt/airbound-controlle
                 "/usr/local/bin/airbound-site /usr/local/bin/airbound-web /usr/local/lib/airbound-frp-build /etc/systemd/system/airbound-*.service "
                 "/etc/airbound-firewall.nft /etc/ssh/sshd_config.d/10-airbound.conf")
 # Stopping the unit (not just deleting its table) lets the installer's "enable --now" load the firewall again.
-SAFETY_NET = ("systemd-run --quiet --unit=airbound-deploy-safety --on-active=600 sh -c "
-              "'systemctl disable --now airbound-firewall; nft delete table inet airbound_firewall 2>/dev/null; "
-              "rm -f /etc/ssh/sshd_config.d/10-airbound.conf; systemctl reload ssh'")
+def safety_net(seconds: int = 600) -> str:
+    return (f"systemd-run --quiet --unit=airbound-deploy-safety --on-active={seconds} sh -c "
+            "'systemctl disable --now airbound-firewall; nft delete table inet airbound_firewall 2>/dev/null; "
+            "rm -f /etc/ssh/sshd_config.d/10-airbound.conf; systemctl reload ssh'")
+
+
+class DeployFailed(Exception):
+    pass
 
 
 def http_status(url: str) -> int:
@@ -43,21 +48,28 @@ def http_status(url: str) -> int:
         return 0
 
 
-def healthy(remote: Remote, domain: str, member_url: str | None) -> tuple[bool, str]:
+def healthy(remote: Remote, domain: str | None, member_url: str | None) -> tuple[bool, str]:
+    """domain None: a relay without a public name (the staging VPS); the website and health checks then ask the controller on the server."""
     states = remote.run(f"for u in {UNITS}; do systemctl is-active $u; done", check=False).split()
     if states != ["active"] * 4:
         return False, f"services: {states}"
-    if http_status(f"https://{domain}/") != 200:
-        return False, f"https://{domain}/ answers {http_status(f'https://{domain}/')}"
+    if domain:
+        site = http_status(f"https://{domain}/")
+        ops_url = f"https://{domain}/api/v1/ops"
+    else:
+        site = int(remote.run("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7500/", check=False) or 0)
+        ops_url = "http://127.0.0.1:7500/api/v1/ops"
+    if site != 200:
+        return False, f"the website answers {site}"
     if member_url and http_status(member_url) != 200:
         return False, f"{member_url} answers {http_status(member_url)}"
-    ops = remote.run(f". /etc/airbound-controller/controller.env; curl -s -o /dev/null -w '%{{http_code}}' -H \"Authorization: Bearer $OPS_TOKEN\" https://{domain}/api/v1/ops", check=False)
+    ops = remote.run(f". /etc/airbound-controller/controller.env; curl -s -o /dev/null -w '%{{http_code}}' -H \"Authorization: Bearer $OPS_TOKEN\" {ops_url}", check=False)
     if ops.strip() != "200":
         return False, f"health endpoint answers {ops.strip()}"
     return True, "services, website, member address and health endpoint OK"
 
 
-def wait_healthy(remote: Remote, domain: str, member_url: str | None, seconds: int = 120) -> tuple[bool, str]:
+def wait_healthy(remote: Remote, domain: str | None, member_url: str | None, seconds: int = 120) -> tuple[bool, str]:
     reason = ""
     for _ in range(seconds // 10):
         ok, reason = healthy(remote, domain, member_url)
@@ -67,39 +79,45 @@ def wait_healthy(remote: Remote, domain: str, member_url: str | None, seconds: i
     return False, reason
 
 
+def deploy(remote: Remote, domain: str | None, member_url: str | None = None, simulate_failure: bool = False) -> str:
+    """Returns why the new relay counts as healthy; raises DeployFailed after putting the old one back."""
+    ok, reason = healthy(remote, domain, member_url)
+    if not ok:
+        raise DeployFailed(f"The relay isn't healthy before the deploy ({reason}); fix that first.")
+
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    print(f"backing up to /var/backups/airbound/{stamp}.tgz")
+    remote.run(f"mkdir -p /var/backups/airbound && tar czf /var/backups/airbound/{stamp}.tgz {BACKUP_PATHS} 2>/dev/null; "
+               f"ls /var/backups/airbound/*.tgz | head -n -5 | xargs -r rm -f")  # keep the last five
+    remote.run(safety_net())
+    remote.put(str(relay_tarball()), "/root/relay.tgz")
+    out = remote.run("cd /root && rm -rf relay-server airbound && tar xzf relay.tgz && cd relay-server && sh install.sh 2>&1 | tail -4", check=False, timeout=1200)
+    print(out.strip())
+
+    ok, reason = wait_healthy(remote, domain, member_url)
+    if simulate_failure:
+        ok, reason = False, "simulated failure (--simulate-failure)"
+    if ok:
+        remote.run("systemctl stop airbound-deploy-safety.timer 2>/dev/null; true")
+        return reason
+
+    print(f"ROLLING BACK: {reason}")
+    remote.run(f"cd / && tar xzf /var/backups/airbound/{stamp}.tgz && systemctl daemon-reload && "
+               f"systemctl restart airbound-firewall {UNITS}", check=False)
+    ok, after = wait_healthy(remote, domain, member_url)
+    remote.run("systemctl stop airbound-deploy-safety.timer 2>/dev/null; true")
+    raise DeployFailed(f"Deploy failed ({reason}); rolled back: {'healthy again' if ok else 'STILL UNHEALTHY: ' + after}")
+
+
 def main() -> None:
     target, key, domain = env("RELAY_SSH"), env("RELAY_KEY"), env("RELAY_DOMAIN")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     member_url = args[0] if args else None  # e.g. the test VM's hosted address
-    simulate_failure = "--simulate-failure" in sys.argv
-    stamp = time.strftime("%Y%m%d-%H%M%S")
     with Remote(target, key) as remote:  # one SSH connection for the whole deploy
-        ok, reason = healthy(remote, domain, member_url)
-        if not ok:
-            raise SystemExit(f"The relay isn't healthy before the deploy ({reason}); fix that first.")
-
-        print(f"backing up to /var/backups/airbound/{stamp}.tgz")
-        remote.run(f"mkdir -p /var/backups/airbound && tar czf /var/backups/airbound/{stamp}.tgz {BACKUP_PATHS} 2>/dev/null; "
-                   f"ls /var/backups/airbound/*.tgz | head -n -5 | xargs -r rm -f")  # keep the last five
-        remote.run(SAFETY_NET)
-        remote.put(str(relay_tarball()), "/root/relay.tgz")
-        out = remote.run("cd /root && rm -rf relay-server airbound && tar xzf relay.tgz && cd relay-server && sh install.sh 2>&1 | tail -4", check=False, timeout=1200)
-        print(out.strip())
-
-        ok, reason = wait_healthy(remote, domain, member_url)
-        if simulate_failure:
-            ok, reason = False, "simulated failure (--simulate-failure)"
-        if ok:
-            remote.run("systemctl stop airbound-deploy-safety.timer 2>/dev/null; true")
-            print(f"DEPLOYED: {reason}")
-            return
-
-        print(f"ROLLING BACK: {reason}")
-        remote.run(f"cd / && tar xzf /var/backups/airbound/{stamp}.tgz && systemctl daemon-reload && "
-                   f"systemctl restart airbound-firewall {UNITS}", check=False)
-        ok, after = wait_healthy(remote, domain, member_url)
-        remote.run("systemctl stop airbound-deploy-safety.timer 2>/dev/null; true")
-        raise SystemExit(f"Deploy failed ({reason}); rolled back: {'healthy again' if ok else 'STILL UNHEALTHY: ' + after}")
+        try:
+            print(f"DEPLOYED: {deploy(remote, domain, member_url, '--simulate-failure' in sys.argv)}")
+        except DeployFailed as err:
+            raise SystemExit(str(err)) from None
 
 
 if __name__ == "__main__":

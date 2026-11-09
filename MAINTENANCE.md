@@ -77,6 +77,7 @@ push to next ──▶ pre-push hook: unit, relay and browser tests (a failure s
   - that a real device key is accepted from the machine that claimed it (read from frpc's environment, as the add-on does) and refused from another
   - that traffic metering reads the hub
   - that after a reboot the boot finishes with no ordering cycles, the firewall up and every service running
+  - that `relay_deploy.py` deploys over one connection, rolls back to the old files on a failure, and that its safety net opens the firewall and SSH settings and the recovery closes them again
 - **Relay deploy** (`scripts/relay_deploy.py`):
   1. Keeps a copy of the running relay.
   2. Installs the new one and checks the services, the website and a member's address.
