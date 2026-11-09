@@ -81,6 +81,7 @@ push to next ──▶ pre-push hook: unit, relay and browser tests (a failure s
   1. Keeps a copy of the running relay.
   2. Installs the new one and checks the services, the website and a member's address.
   3. Puts the copy back if anything fails.
+  4. Does all of it over one SSH connection. A burst of short SSH connections looks like a scan to an intrusion prevention system on the way (a UniFi gateway's "Scanning Activity" blocked the relay's SSH mid-deploy once), and so does probing port 22 again and again. If SSH to the relay times out, stop: retrying keeps the block alive. The safety net then opens the firewall after 10 minutes; once you're back in, run `systemctl enable --now airbound-firewall` and the installer again (or `relay_deploy.py`) to close it.
 - **Afterwards:** watch the next report, and the relay's alerts.
 
 ## Known Home Assistant behaviour we work around

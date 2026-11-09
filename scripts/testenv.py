@@ -52,6 +52,43 @@ def scp(key: str, source: str, target: str) -> None:
     run(["scp", "-q", "-i", key, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", source, target])
 
 
+class Remote:
+    """One SSH connection for a whole job, for commands and file uploads.
+
+    Each ssh or scp call opens a new connection, and a burst of short SSH
+    connections to one address looks like a scan to an intrusion prevention
+    system on the way (the maintainer's UniFi gateway blocked airbound.dev for
+    that mid-deploy). Only hosts already in ~/.ssh/known_hosts are accepted.
+    """
+
+    def __init__(self, target: str, key: str) -> None:
+        import paramiko
+
+        user, _, host = target.rpartition("@")
+        self._client = paramiko.SSHClient()
+        self._client.load_host_keys(os.path.expanduser("~/.ssh/known_hosts"))
+        self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        self._client.connect(host, username=user or "root", key_filename=key, look_for_keys=False, allow_agent=False, timeout=10)
+        self._client.get_transport().set_keepalive(30)
+
+    def __enter__(self) -> "Remote":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._client.close()
+
+    def run(self, command: str, check: bool = True, timeout: int = 900) -> str:
+        _, stdout, stderr = self._client.exec_command(command, timeout=timeout)
+        out, err = stdout.read().decode("utf-8", "replace"), stderr.read().decode("utf-8", "replace")
+        if check and stdout.channel.recv_exit_status() != 0:
+            raise RuntimeError(f"{command[:60]}…: {err.strip()[-600:] or out.strip()[-600:]}")
+        return out
+
+    def put(self, source: str, target: str) -> None:
+        with self._client.open_sftp() as sftp:
+            sftp.put(source, target)
+
+
 def head_commit() -> str:
     return run(["git", "rev-parse", "HEAD"], quiet=True).strip()
 
