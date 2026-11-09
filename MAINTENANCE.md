@@ -37,7 +37,7 @@ needs a decision under **Action needed**.
   - Merge Dependabot pull requests on `next` once its tests pass.
   - Rebuild frp with the newest Go, and a newer frp if there is one (see below).
   - Update Caddy, its modules, CrowdSec and the Python base image when newer ones are out.
-  - Update the test VM to the newest Home Assistant and run the test round.
+  - Update the test VM to the newest Home Assistant (`python scripts/update_test_vm.py`) and run the test round. The test VM stays on Home Assistant's stable channel, since it tests what users run; the script moves it back if it finds it on another.
 - **When Home Assistant has a beta out** (the report says so, about a week before each monthly release): run `python scripts/beta.py`. A failure doesn't block other releases, but fix it and release before HA's release day, or report it to Home Assistant if the fault is theirs.
   - Release through the normal path below.
 - **Within 48 hours:** a critical vulnerability that the internet can reach. That means frps on the relays, Caddy, Home Assistant's login path, or OpenSSL/Python in the add-on. Fix it, test it, release it.
