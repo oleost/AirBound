@@ -1,10 +1,11 @@
 # Base images are pinned by digest (multi-arch index), so a re-pointed tag can't change what we build on.
-FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9227460374d46097d5 AS caddy-build
+FROM caddy:2.11.9-builder@sha256:3fddbec729442a56b942d4c9eaef1df80893dbf2cf5b86701bfae6aad1408eeb AS caddy-build
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.15.0 \
     --replace golang.org/x/net=golang.org/x/net@v0.62.0 \
-    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.7 \
+    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.9 \
+    --replace github.com/klauspost/compress=github.com/klauspost/compress@v1.20.4 \
     --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@v5.4.0 \
     --output /usr/bin/caddy
 

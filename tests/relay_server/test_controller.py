@@ -314,7 +314,7 @@ def test_ops_report_has_the_health_fields(tmp_path, monkeypatch):
     linked(db)
     monkeypatch.setattr(ops, "health_problems", lambda: [])  # reads Linux-only load and memory
     report = ops.report(CONFIG, db, 60.0)
-    for key in ("reboot_required", "days_since_unattended_upgrade", "disk_used_percent", "frp_build", "website_certificate_days_left", "devices"):
+    for key in ("reboot_required", "reboot_required_days", "days_since_unattended_upgrade", "disk_used_percent", "frp_build", "website_certificate_days_left", "devices"):
         assert key in report
     assert report["devices"] == 1 and report["accounts_with_access"] == 1
 

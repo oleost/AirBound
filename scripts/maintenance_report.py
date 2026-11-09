@@ -262,8 +262,11 @@ def build_report() -> str:
     elif "error" in ops:
         actions.append(f"Couldn't reach the relay's health endpoint: {ops['error']}")
     else:
-        if ops.get("reboot_required") and (ops.get("uptime_days") or 0) > 3:
-            actions.append(f"The relay needs a restart and has been up {ops['uptime_days']} days (the nightly restart isn't happening).")
+        # A restart waits for the next 04:30, so only one pending for days means the nightly restart isn't happening.
+        # Uptime alone says nothing: an update a week after the last restart is normal.
+        pending = ops.get("reboot_required_days", ops.get("uptime_days"))  # relays before 0.15.4 report no age
+        if ops.get("reboot_required") and (pending or 0) > 3:
+            actions.append(f"The relay has waited {pending} days for a restart (the nightly restart isn't happening).")
         if (ops.get("days_since_unattended_upgrade") or 99) > 3:
             actions.append(f"The relay's automatic updates last ran {ops.get('days_since_unattended_upgrade')} days ago.")
         if (ops.get("disk_used_percent") or 0) > 80:

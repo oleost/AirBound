@@ -21,9 +21,9 @@ permissions:
   contents: read
 
 env:
-  FRP_VERSION: "0.71.1"
-  FRP_COMMIT: "d8cf1800dc1abd7fda1828cab105d7a6b5a50eb1"  # the v0.71.1 tag; tags can move, commits can't
-  BUILD: "airbound2"
+  FRP_VERSION: "0.72.0"
+  FRP_COMMIT: "bafec21abce5f91ae4a05b4bd19c55543c263128"  # the v0.72.0 tag; tags can move, commits can't
+  BUILD: "airbound1"
 
 jobs:
   build:
