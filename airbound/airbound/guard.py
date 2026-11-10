@@ -3,7 +3,9 @@
 Caddy routes only /auth/login_flow* here. Each response from Home Assistant's
 login flow is inspected: a flow that reaches ``create_entry`` (which carries
 the authorization code) without HA having asked for an MFA code is refused,
-so no tokens can be issued for it.
+so no tokens can be issued for it. Any answer that carries a ``result`` counts
+as a finished login, whatever its type is called, so a renamed type in a later
+Home Assistant can't open a way around the check.
 
 Each login also names the app it is for, its ``client_id``, and HA sends the
 authorization code to that app. A link to the real login page with another
@@ -109,6 +111,15 @@ _HOP_BY_HOP = frozenset(
 )
 
 
+def finishes_login(payload: dict) -> bool:
+    """Does this answer from the login flow hand out an authorization code?
+
+    Home Assistant puts the code in ``result`` of a ``create_entry`` answer, and no other
+    answer has a ``result``. Either sign is enough, so the check fails closed.
+    """
+    return payload.get("type") == "create_entry" or "result" in payload
+
+
 class FlowTracker:
     """Remembers which login flows have shown an MFA step."""
 
@@ -123,11 +134,11 @@ class FlowTracker:
         self._expire()
         flow_id = payload.get("flow_id")
         kind = payload.get("type")
-        if kind == "form" and payload.get("step_id") in MFA_STEPS and flow_id:
+        if kind == "form" and payload.get("step_id") in MFA_STEPS and isinstance(flow_id, str) and flow_id and "result" not in payload:
             self._mfa_seen[flow_id] = self._clock()
             return True
-        if kind == "create_entry":
-            return self._mfa_seen.pop(flow_id, None) is not None if flow_id else False
+        if finishes_login(payload):
+            return self._mfa_seen.pop(flow_id, None) is not None if isinstance(flow_id, str) and flow_id else False
         return True
 
     def _expire(self) -> None:
@@ -217,6 +228,10 @@ class AuthGuard:
         assert self._session is not None
         headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
         headers["Accept-Encoding"] = "identity"  # the body must be readable as JSON
+        if request.headers.get("Content-Encoding", "identity").strip().lower() != "identity":
+            # Browsers and the apps never compress what they send. A compressed body would be
+            # one thing to this check and could be another to Home Assistant, so it stops here.
+            return web.json_response({"message": "AirBound doesn't accept compressed login requests."}, status=415)
         data = await request.read()
         ip = (request.headers.get("X-Forwarded-For") or request.remote or "").split(",")[0].strip()
         if (refused := self._client_refused(request, data, ip)) is not None:
@@ -248,7 +263,7 @@ class AuthGuard:
             payload = json.loads(body)
             allowed = self._tracker.allows(payload)
             if isinstance(payload, dict):
-                if payload.get("type") == "create_entry":
+                if finishes_login(payload):
                     if not allowed and self._require_mfa():
                         self.refused += 1
                         _LOGGER.warning("Refused external login without MFA from %s", ip)

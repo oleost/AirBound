@@ -32,6 +32,30 @@ STATIC = Path(__file__).parent / "static"
 ASSET_VERSION = hashlib.sha256(b"".join((STATIC / name).read_bytes() for name in ("app.js", "style.css"))).hexdigest()[:12]
 
 
+# The panel runs inside Home Assistant's own address, signed in as an administrator, so a script
+# that got into it could do anything the administrator can. The browser is told to run and load
+# only the panel's own files; the stylesheet rule allows style attributes, which the pages use.
+PANEL_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; "
+        "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+@web.middleware
+async def security_headers(request: web.Request, handler):
+    try:
+        response = await handler(request)
+    except web.HTTPException as err:
+        err.headers.update(PANEL_HEADERS)
+        raise
+    response.headers.update(PANEL_HEADERS)
+    return response
+
+
 @web.middleware
 async def ingress_only(request: web.Request, handler):
     if request.remote != INGRESS_PROXY:
@@ -93,7 +117,7 @@ class Panel:
         self._ha_upstream = ha_upstream
 
     def app(self) -> web.Application:
-        app = web.Application(middlewares=[ingress_only, json_only, friendly_errors])
+        app = web.Application(middlewares=[security_headers, ingress_only, json_only, friendly_errors])
         r = app.router
         r.add_get("/", self.index)
         r.add_static("/static", STATIC)

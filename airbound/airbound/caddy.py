@@ -18,9 +18,10 @@ CADDYFILE = Path("/data/Caddyfile")
 ACCESS_LOG = Path("/data/logs/access.log")
 GUARD_ADDRESS = "127.0.0.1:8100"
 # Addresses Home Assistant takes for the home network or itself. Caddy's private_ranges
-# leaves out link-local addresses and IPv4 addresses written as IPv6 (::ffff:10.0.0.1),
-# which Home Assistant also counts as local.
-LOCAL_RANGES = "private_ranges 0.0.0.0/8 169.254.0.0/16 fe80::/10 ::ffff:0:0/96"
+# leaves out link-local addresses, half of the IPv6 range for private networks (it has
+# fd00::/8, Home Assistant counts all of fc00::/7) and IPv4 addresses written as IPv6
+# (::ffff:10.0.0.1), which Home Assistant also counts as local.
+LOCAL_RANGES = "private_ranges 0.0.0.0/8 169.254.0.0/16 fc00::/7 fe80::/10 ::ffff:0:0/96"
 
 
 def _site(address: str, settings: Settings, ha_upstream: str, crowdsec: bool, guard_forged: bool = False) -> str:
@@ -98,6 +99,7 @@ def render_caddyfile(settings: Settings, ha_upstream: str, crowdsec: bool = Fals
     relay_server = (
         f"""
 	servers :{relay_port} {{
+		protocols h1 h2
 		listener_wrappers {{
 			proxy_protocol {{
 				allow 127.0.0.1/32

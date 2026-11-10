@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.6
+
+More from the security review. Nothing here was known to be misused, and there is nothing you have to do.
+
+- **Each program inside AirBound is now limited to its own files.** The parts that face the internet (the proxy, the relay connection and CrowdSec) could until now read everything in the add-on, including AirBound's settings and the copy of your Home Assistant configuration folder it uses to see who has two-step login. With the new AppArmor profile, a hole in one of them no longer gives that away. Home Assistant shows this as a higher security rating for the add-on.
+- **The two-step check holds even if Home Assistant changes its login.** Any answer from Home Assistant that would log someone in is stopped without two-step login, whatever Home Assistant calls it in a later version.
+- With a relay, a connection that claims to come from your home network is refused in one more case (a private IPv6 range Home Assistant counts as local).
+- The AirBound panel now tells the browser to run only its own scripts, as an extra guard for the page where you manage remote access.
+
 ## 0.15.5
 
 A security review of AirBound. Nothing here was known to be misused, and there is nothing you have to do.

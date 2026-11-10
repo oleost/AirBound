@@ -42,7 +42,8 @@ def test_hosted_caddy_gets_an_exact_certificate_through_the_relay():
     assert "*.airbound.dev" not in config  # never a wildcard on the relay's domain
     assert "proxy_protocol" in config and "@forged_local remote_ip private_ranges" in config
     # Home Assistant also takes link-local addresses and IPv4 written as IPv6 for the home network.
-    for local in ("169.254.0.0/16", "fe80::/10", "::ffff:0:0/96"):
+    # fc00::/7: Caddy's private_ranges only has the fd00::/8 half of it.
+    for local in ("169.254.0.0/16", "fc00::/7", "fe80::/10", "::ffff:0:0/96"):
         assert local in config.split("@forged_local remote_ip")[1].splitlines()[0]
 
 

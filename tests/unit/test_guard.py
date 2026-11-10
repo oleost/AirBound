@@ -120,3 +120,41 @@ async def test_forwarded_for_reaches_ha(aiohttp_client):
     _, ha, client = await guarded_client(aiohttp_client, [form("init")])
     await client.post("/auth/login_flow", json={}, headers={"X-Forwarded-For": "203.0.113.7"})
     assert ha.server.app["seen_headers"][0]["X-Forwarded-For"] == "203.0.113.7"
+
+
+def test_an_answer_with_a_code_counts_as_a_login_whatever_its_type_is_called():
+    """If a later Home Assistant renames create_entry, the code must still not get out without MFA."""
+    tracker = FlowTracker()
+    tracker.allows(form("init"))
+    assert not tracker.allows({"type": "finished", "flow_id": FLOW, "result": "code"})
+    assert not tracker.allows({"flow_id": FLOW, "result": "code"})
+    tracker.allows(form("mfa"))
+    assert tracker.allows({"type": "finished", "flow_id": FLOW, "result": "code"})
+
+
+def test_a_code_inside_an_mfa_form_does_not_count_as_the_mfa_step():
+    tracker = FlowTracker()
+    assert not tracker.allows({**form("mfa"), "result": "code"})
+    assert not tracker.allows(entry())
+
+
+async def test_proxy_refuses_a_renamed_login_answer_without_mfa(aiohttp_client):
+    guard, _, client = await guarded_client(aiohttp_client, [form("init"), {"type": "finished", "flow_id": FLOW, "result": "code"}])
+    await client.post("/auth/login_flow", json={})
+    resp = await client.post(f"/auth/login_flow/{FLOW}", json={"username": "u", "password": "p"})
+    assert resp.status == 403 and "result" not in await resp.json()
+    assert guard.refused == 1
+
+
+async def test_a_compressed_request_stops_at_the_guard(aiohttp_client):
+    """The guard reads the body to see which app the login is for; Home Assistant must never read it differently."""
+    import gzip
+
+    _, ha, client = await guarded_client(aiohttp_client, [form("init")])
+    resp = await client.post(
+        "/auth/login_flow",
+        data=gzip.compress(b'{"client_id": "https://example.com/"}'),
+        headers={"Content-Encoding": "gzip", "Content-Type": "application/json"},
+    )
+    assert resp.status == 415
+    assert ha.server.app["seen_headers"] == []

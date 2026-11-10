@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from airbound.web import PANEL_HEADERS
+
 playwright = pytest.importorskip("playwright.sync_api")
 
 STATIC = Path(__file__).resolve().parents[2] / "airbound" / "airbound" / "static"
@@ -34,6 +36,11 @@ class Panel(SimpleHTTPRequestHandler):
         if path.split("?")[0] in ("/", ""):
             path = "/static/index.html"
         return super().translate_path(path)
+
+    def end_headers(self):
+        for name, value in PANEL_HEADERS.items():  # the browser tests run under the panel's real policy
+            self.send_header(name, value)
+        super().end_headers()
 
     def log_message(self, *args):
         pass

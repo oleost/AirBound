@@ -613,3 +613,16 @@ def test_the_site_key_must_be_text(tmp_path):
     plugin = Plugin(CONFIG, Database(tmp_path / "db"))
     assert plugin.handle("Login", {"user": "site", "metas": {"key": ["sitekey"]}})["reject"] is True
     assert plugin.handle("Login", {"user": "site", "metas": {"key": "sitekey"}})["reject"] is False
+
+
+async def test_a_link_request_that_is_not_a_json_object_is_a_bad_request(tmp_path, aiohttp_client):
+    _db, _site, client = await link_client(tmp_path, aiohttp_client)
+    for body in ("[1]", '"text"', "7", "null", "{not json"):
+        response = await client.post("/api/v1/claims", data=body, headers={"Content-Type": "application/json"})
+        assert response.status == 400, body
+
+
+def test_the_website_does_not_say_what_software_answers():
+    install = (Path(__file__).resolve().parents[2] / "relay-server" / "install.sh").read_text(encoding="utf-8")
+    site = install.split("https://$DOMAIN:8443 {")[1].split("EOF")[0]
+    assert "header -Server" in site

@@ -3,7 +3,8 @@
 The test environment's private addresses live in .env (never committed):
 PROXMOX_HOST, PROXMOX_KEY, TEST_VPS_VMID, TEST_VPS_IP, TEST_VPS_KEY,
 DEBIAN_VPS_VMID, DEBIAN_VPS_IP,
-RELAY_SSH, RELAY_KEY, RELAY_DOMAIN, the HA test VM's HA_URL/HA_WS/HA_TOKEN,
+RELAY_SSH, RELAY_KEY, RELAY_DOMAIN, the HA test VM's HA_URL/HA_WS/HA_TOKEN and
+HA_VMID (scripts/confinement.py reaches it through Proxmox's guest agent),
 and the beta VM's BETA_VMID/BETA_HA_TOKEN (scripts/beta.py).
 """
 

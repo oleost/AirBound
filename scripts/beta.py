@@ -37,6 +37,7 @@ from testenv import ROOT, begin_run, env, run, save_result, ssh
 # Everything that follows (ha.py, deploy.py, the integration tests) talks to the beta VM.
 os.environ["HA_TOKEN"] = env("BETA_HA_TOKEN")
 
+import confinement  # noqa: E402
 from ha import HA, HAError  # noqa: E402
 
 REPOSITORY = "https://github.com/oleost/AirBound#next"
@@ -208,7 +209,7 @@ async def ha_settings() -> str:
 
 def main() -> None:
     print(f"testing {begin_run()[:12]}")
-    results, failed = {}, False
+    results, failed, started_at = {}, False, time.time()
     with BetaVM():
         for name, step in (("beta", to_beta), ("install", ensure_installed)):
             started = time.monotonic()
@@ -246,6 +247,14 @@ def main() -> None:
                         print(f"✗ ha_settings: {err}")
                         failed = True
                         break
+        if not failed:
+            try:
+                results["confinement"] = {"ok": True, "detail": confinement.check(env("BETA_VMID"), since=started_at)}
+                print(f"✓ confinement: {results['confinement']['detail']}")
+            except Exception as err:
+                results["confinement"] = {"ok": False, "detail": str(err)}
+                print(f"✗ confinement: {err}")
+                failed = True
     path = save_result("beta", results)
     print(f"\n{'FAILED' if failed else 'PASSED'}; the beta VM is stopped; result in {path.relative_to(ROOT)}")
     sys.exit(1 if failed else 0)

@@ -18,6 +18,7 @@ from .crowdsec import CrowdSec, log_failed_login
 from .golive import GoLive, keep_dns_current, keep_port_open, start_saved
 from .guard import AuthGuard
 from .mqtt import ENTITIES, Mqtt, entity_id
+from .process import confinement
 from .relay import Frpc
 from .remove import Removal
 from .reporting import Reporter
@@ -31,6 +32,12 @@ MQTT_MIGRATED = Path("/data/mqtt_migrated")
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    profile = confinement()
+    if "_airbound" in profile:
+        _LOGGER.info("Each of AirBound's programs is limited to its own files (AppArmor profile %s)", profile)
+    else:
+        # Home Assistant OS loads the profile with the add-on; other systems may not have AppArmor.
+        _LOGGER.info("AirBound's AppArmor profile isn't in force here (%s): its programs aren't kept apart", profile or "no AppArmor")
     store = Store()
     if store.settings.live and store.settings.tls == "cloudflare" and not store.settings.public_ip:
         # Marked live without the DNS step ever running (left over from v0.2.2): go live again.

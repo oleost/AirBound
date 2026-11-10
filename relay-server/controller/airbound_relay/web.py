@@ -165,9 +165,10 @@ class Web:
         if not self._claims_limit.allow(self._client(request)):
             return web.json_response({"error": "Too many link requests. Try again in an hour."}, status=429)
         try:
-            install_id = str((await request.json()).get("install_id", ""))
+            body = await request.json()
         except ValueError:
-            install_id = ""
+            body = None
+        install_id = str(body.get("install_id", "")) if isinstance(body, dict) else ""
         if not INSTALL_ID_RE.match(install_id):
             return web.json_response({"error": "bad request"}, status=400)
         claim_id, poll = self._db.new_claim(install_id)

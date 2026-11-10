@@ -205,6 +205,8 @@ cat > "$HUB/Caddyfile" <<EOF
 https://$DOMAIN:8443 {
 	bind 127.0.0.1
 	header Strict-Transport-Security "max-age=31536000"
+	# Which software and version answers is nobody's business.
+	header -Server
 	reverse_proxy 127.0.0.1:7500
 }
 EOF

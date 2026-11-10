@@ -5,8 +5,10 @@
 
 Scenarios, in order: unit tests, deploy next to the test VM, the hosted relay
 end to end, the integration tests (including MFA enforcement), MFA-guard bypass
-probes from outside, and own-relay mode on a fresh test VPS. The test VM ends
-up back on the hosted relay, and the VPS is stopped. The result is written to
+probes from outside, own-relay mode on a fresh test VPS, and the AppArmor
+profile (in force, refused nothing the round needed, keeps the helper programs
+out of each other's files). The test VM ends up back on the hosted relay, and
+the VPS is stopped. The result is written to
 test-results/e2e-<commit>.json, which scripts/release.py requires.
 """
 
@@ -24,11 +26,13 @@ import urllib.request
 import aiohttp
 from yarl import URL
 
-from testenv import ROOT, TestVPS, begin_run, run, save_result
+import confinement
+from testenv import ROOT, TestVPS, begin_run, env, run, save_result
 
 from conftest import LOCAL_URL, create_user, ingress  # noqa: E402
 from ha import HA  # noqa: E402
 
+STARTED = time.time()
 TEST_NAME = ("k7f3q9x2m4p8", "airbound.test")  # own-relay test address (self-signed)
 BYPASS_STEPS = ["/auth/login_flow/{id}", "//auth/login_flow/{id}", "/auth//login_flow/{id}", "/AUTH/login_flow/{id}",
                 "/auth/%6Cogin_flow/{id}", "/auth/login_flow/{id}/", "/x/../auth/login_flow/{id}", "/auth/./login_flow/{id}",
@@ -202,7 +206,15 @@ async def own_relay() -> str:
         return f"fresh VPS: installed and hardened (exposure {exposure.group(1) if exposure else '?'}), tunnel up, survives a reboot, back on {url}"
 
 
-SCENARIOS = [("unit", unit), ("deploy", deploy), ("hosted", hosted), ("integration", integration), ("bypass", bypass), ("own_relay", own_relay)]
+def confined() -> str:
+    """Last, so every refusal during the round counts: a profile that is too tight breaks things quietly."""
+    return confinement.check(env("HA_VMID"), since=STARTED)
+
+
+SCENARIOS = [
+    ("unit", unit), ("deploy", deploy), ("hosted", hosted), ("integration", integration), ("bypass", bypass), ("own_relay", own_relay),
+    ("confinement", confined),
+]
 
 
 def main() -> None:
