@@ -124,8 +124,10 @@ async def update(part: str) -> str:
         return info["version"]
     want = info["version_latest"]
     print(f"{part}: {info['version']} -> {want}")
+    installed = False  # the update call came back by itself: nothing restarted under us
     try:
         await supervisor(f"/{part}/update", "post", {} if part != "core" else {"backup": False}, timeout=1800)
+        installed = True
     except HAError as err:
         if "reboot" not in str(err):
             raise
@@ -133,11 +135,15 @@ async def update(part: str) -> str:
         await supervisor("/host/reboot", "post", timeout=60)
     except (OSError, websockets.ConnectionClosed):
         pass  # Core and OS restart under us; the update carries on
-    for _ in range(180):
+    for attempt in range(180):
         await asyncio.sleep(10)
         try:
             if (await supervisor(f"/{part}/info"))["version"] == want:
                 return want
+            if part == "os" and installed and attempt == 12:
+                # Installed to the other boot slot, but the VM never restarted into it (seen with 18.5.rc1).
+                print("os: installed but still on the old version after 2 minutes; restarting the VM")
+                await supervisor("/host/reboot", "post", timeout=60)
         except Exception:  # the connection is down while it restarts
             continue
     raise RuntimeError(f"{part} didn't reach {want}")

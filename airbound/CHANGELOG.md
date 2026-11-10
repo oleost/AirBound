@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.7
+
+- CrowdSec now finds its files for looking up where an address is from. They were stored in the wrong folder, so that lookup never worked; blocking itself was not affected.
+
 ## 0.15.6
 
 More from the security review. Nothing here was known to be misused, and there is nothing you have to do.

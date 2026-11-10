@@ -144,6 +144,19 @@ def parse_decisions(raw: str) -> list[dict]:
     return bans
 
 
+def lift_nested_data(data: Path) -> None:
+    """Before 0.15.7 the image's data folder was copied one level too deep (data/data), so
+    CrowdSec never found its GeoIP files there. Move what is in it up to where CrowdSec looks."""
+    nested = data / "data"
+    if not nested.is_dir():
+        return
+    for item in nested.iterdir():
+        target = data / item.name
+        if not target.exists():
+            item.replace(target)
+    shutil.rmtree(nested, ignore_errors=True)
+
+
 class CrowdSec:
     def __init__(self) -> None:
         self._process: asyncio.subprocess.Process | None = None
@@ -176,7 +189,8 @@ class CrowdSec:
             shutil.copytree(DEFAULT_ETC, ETC, symlinks=True)
             for link in [p for p in ETC.rglob("*") if p.is_symlink()]:
                 link.unlink()
-            shutil.copytree(DEFAULT_DATA, DATA, dirs_exist_ok=True)
+            shutil.copytree(DEFAULT_DATA / "data", DATA, dirs_exist_ok=True)
+        lift_nested_data(DATA)
         (ETC / "acquis.d").mkdir(exist_ok=True)
         CONFIG.write_text(config_yaml())
         (ETC / "acquis.yaml").write_text(acquis_yaml())

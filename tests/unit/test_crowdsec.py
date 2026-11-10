@@ -55,3 +55,20 @@ def test_caddy_bouncer_only_with_key_and_runs_first():
     route = with_bouncer.split("route {")[1]
     assert route.strip().startswith("crowdsec")
     assert "crowdsec" not in render_caddyfile(settings, "homeassistant:80")
+
+
+def test_data_copied_one_level_too_deep_is_moved_to_where_crowdsec_looks(tmp_path):
+    from airbound.crowdsec import lift_nested_data
+
+    data = tmp_path / "data"
+    (data / "data" / "trace").mkdir(parents=True)
+    (data / "data" / "GeoLite2-City.mmdb").write_bytes(b"geo")
+    (data / "data" / "crowdsec.db").write_bytes(b"from the image")
+    (data / "crowdsec.db").write_bytes(b"in use")
+    (data / "trace").mkdir()
+    lift_nested_data(data)
+    assert (data / "GeoLite2-City.mmdb").read_bytes() == b"geo"
+    assert (data / "crowdsec.db").read_bytes() == b"in use"  # never replaces what CrowdSec already has
+    assert not (data / "data").exists()
+    lift_nested_data(data)  # nothing to do the second time
+
