@@ -72,3 +72,9 @@ def test_data_copied_one_level_too_deep_is_moved_to_where_crowdsec_looks(tmp_pat
     assert not (data / "data").exists()
     lift_nested_data(data)  # nothing to do the second time
 
+
+def test_crowdsec_keeps_sqlite_temporary_files_in_tmp():
+    """SQLite falls back to /var/tmp, which crowdsec's AppArmor profile refuses; /tmp is allowed."""
+    from airbound import crowdsec
+
+    assert crowdsec.crowdsec_env()["TMPDIR"] == "/tmp"

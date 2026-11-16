@@ -44,8 +44,9 @@ esac
 
 echo "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq python3-venv openssl curl ca-certificates nftables >/dev/null
+# Wait for the automatic updates if they hold the package lock, instead of stopping halfway.
+apt-get -o DPkg::Lock::Timeout=600 update -qq
+apt-get -o DPkg::Lock::Timeout=600 install -y -qq python3-venv openssl curl ca-certificates nftables >/dev/null
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT

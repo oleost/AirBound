@@ -59,6 +59,7 @@ def test_each_helper_gets_its_own_files():
     assert "/app/airbound/hosted_relay_ca.pem r," in rules_of("frpc") and (ADDON / "airbound" / "hosted_relay_ca.pem").exists()
     assert f"{crowdsec.BASE.as_posix()}/** rwlk," in rules_of("crowdsec")
     assert crowdsec.AUTH_LOG.parent.as_posix() == "/data/logs" and "/data/logs/** r," in rules_of("crowdsec")
+    assert crowdsec.crowdsec_env()["TMPDIR"] == "/tmp" and "owner /tmp/** rwk," in rules_of("crowdsec")  # SQLite's temporary files
     assert f"{crowdsec.DEFAULT_DATA.as_posix()}/** r," in main_rules()
     assert crowdsec.DEFAULT_ETC.as_posix().startswith("/etc/") and "/etc/** r," in main_rules()
 

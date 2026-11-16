@@ -24,6 +24,13 @@ from pathlib import Path
 
 from .process import child_env
 
+
+def crowdsec_env() -> dict[str, str]:
+    """crowdsec and cscli: SQLite puts its temporary files in /var/tmp unless TMPDIR says otherwise,
+    and the AppArmor profile allows only /tmp (the test round found a refusal)."""
+    return child_env(TMPDIR="/tmp")
+
+
 _LOGGER = logging.getLogger(__name__)
 
 BASE = Path("/data/crowdsec")
@@ -173,7 +180,7 @@ class CrowdSec:
 
     async def cscli(self, *args: str, check: bool = True) -> str:
         proc = await asyncio.create_subprocess_exec(
-            "cscli", "-c", str(CONFIG), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=child_env()
+            "cscli", "-c", str(CONFIG), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=crowdsec_env()
         )
         out, err = await proc.communicate()
         if check and proc.returncode != 0:
@@ -231,7 +238,7 @@ class CrowdSec:
         except Exception:
             _LOGGER.exception("CrowdSec setup failed; AirBound keeps running without it")
             return
-        self._process = await asyncio.create_subprocess_exec("crowdsec", "-c", str(CONFIG), env=child_env())
+        self._process = await asyncio.create_subprocess_exec("crowdsec", "-c", str(CONFIG), env=crowdsec_env())
         host, port = LAPI.split(":")
         for _ in range(30):  # let the local API come up before Caddy connects to it
             try:

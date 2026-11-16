@@ -92,10 +92,14 @@ def deploy(remote: Remote, domain: str | None, member_url: str | None = None, si
                f"ls /var/backups/airbound/*.tgz | head -n -5 | xargs -r rm -f")  # keep the last five
     remote.run(safety_net())
     remote.put(str(relay_tarball()), "/root/relay.tgz")
-    out = remote.run("cd /root && rm -rf relay-server airbound && tar xzf relay.tgz && cd relay-server && sh install.sh 2>&1 | tail -4", check=False, timeout=1200)
+    out = remote.run("cd /root && rm -rf relay-server airbound && tar xzf relay.tgz && cd relay-server && "
+                     "{ sh install.sh > /root/install.log 2>&1; echo \"install exit $?\"; }; tail -4 /root/install.log", check=False, timeout=1200)
     print(out.strip())
+    installed = "install exit 0" in out  # a half-run installer leaves the old relay healthy, so health alone can't tell
 
     ok, reason = wait_healthy(remote, domain, member_url)
+    if ok and not installed:
+        ok, reason = False, "install.sh stopped with an error (see /root/install.log on the relay)"
     if simulate_failure:
         ok, reason = False, "simulated failure (--simulate-failure)"
     if ok:
