@@ -15,8 +15,10 @@ set -eu
 
 FRP_VERSION="0.72.0"
 # frp built from source with the newest Go by .github/workflows/frp.yaml (see why there).
-FRP_RELEASE="frp-v0.72.0-airbound1"
+FRP_RELEASE="frp-v0.72.0-airbound2"
 CADDY_VERSION="2.11.9"
+# Caddy for the website, built from source with the newest Go by .github/workflows/caddy.yaml.
+CADDY_RELEASE="caddy-v2.11.9-airbound1"
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 fail() { echo "AirBound hosted relay: $1" >&2; exit 1; }
@@ -29,13 +31,13 @@ HARDEN="$HERE/../airbound/airbound/vps_harden.sh"  # shared with the personal re
 case "$(uname -m)" in
   x86_64 | amd64)
     ARCH=amd64
-    FRP_SHA=f9224a8ed735cc8a3d78fe3cd37e9b0a7c77ed285207763efb47e3a532d6f243
-    CADDY_SHA=0e85544340290a16ce4bfb76fe7d65e9de1bf3a6e67f5ccfff30b30d27ea4c73e078077b7bf3e58ae60b6b12e44327705287059c775bca5782e8ee85ea7edd75
+    FRP_SHA=74a228797e9796faaf6b60bab88cdde957f7269eb64c958b0568532a4105c105
+    CADDY_SHA=e894072d3fae21f325c57cf9ec0fb6e4124f061446a1f69b65ec386f36f06d1b
     ;;
   aarch64 | arm64)
     ARCH=arm64
-    FRP_SHA=721c4866938d54ad266f4b8e49cfae615af71651043c1abe1625ce2437e50708
-    CADDY_SHA=9e5e76d7888542924de2c25353ae87c5f77e2a22c5b1198633cae13688922282e05383d142599205c88d8d80eee5e967d291214d7abce4835329a191b20dd6e0
+    FRP_SHA=ca84e4fcc8c29dbf81ecb9529c14e9f344cbddfada6150be104e0b16818f89ab
+    CADDY_SHA=c37b531df3f8cab52a4ceeb43ea13674d4cee909ea4e007c6d696eab30671b07
     ;;
   *) fail "unsupported processor: $(uname -m)" ;;
 esac
@@ -60,12 +62,13 @@ if [ "$(cat /usr/local/lib/airbound-frp-build 2>/dev/null || true)" != "$FRP_REL
   mkdir -p /usr/local/lib && echo "$FRP_RELEASE" > /usr/local/lib/airbound-frp-build
 fi
 
-if ! /usr/local/bin/airbound-web version 2>/dev/null | grep -q "^v$CADDY_VERSION "; then
-  echo "Downloading Caddy $CADDY_VERSION..."
-  curl -fsSL -o "$TMP/caddy.tgz" "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${ARCH}.tar.gz"
-  echo "$CADDY_SHA  $TMP/caddy.tgz" | sha512sum -c - >/dev/null || fail "Caddy didn't match its checksum."
+if [ "$(cat /usr/local/lib/airbound-caddy-build 2>/dev/null || true)" != "$CADDY_RELEASE" ]; then
+  echo "Downloading Caddy $CADDY_VERSION ($CADDY_RELEASE)..."
+  curl -fsSL -o "$TMP/caddy.tgz" "https://github.com/oleost/AirBound/releases/download/${CADDY_RELEASE}/caddy_${CADDY_VERSION}_linux_${ARCH}.tar.gz"
+  echo "$CADDY_SHA  $TMP/caddy.tgz" | sha256sum -c - >/dev/null || fail "Caddy didn't match its checksum."
   tar -xzf "$TMP/caddy.tgz" -C "$TMP" caddy
   install -m 0755 "$TMP/caddy" /usr/local/bin/airbound-web
+  mkdir -p /usr/local/lib && echo "$CADDY_RELEASE" > /usr/local/lib/airbound-caddy-build
 fi
 
 id airbound >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin airbound

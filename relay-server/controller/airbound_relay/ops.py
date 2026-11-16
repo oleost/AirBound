@@ -21,6 +21,7 @@ from .limits import health_problems, month_of
 
 APT_STAMPS = Path("/var/lib/apt/periodic")
 FRP_BUILD = Path("/usr/local/lib/airbound-frp-build")
+CADDY_BUILD = Path("/usr/local/lib/airbound-caddy-build")  # the website's Caddy
 CONTROLLER_BUILD = Path(__file__).resolve().parent.parent / "BUILD"
 GB = 1000**3
 
@@ -71,6 +72,7 @@ def report(config: Config, db: Database, certificate_days: float | None = None, 
         "disk_used_percent": round(100 * disk.used / disk.total, 1) if disk.total else None,
         "problems": health_problems(),
         "frp_build": _read(FRP_BUILD),
+        "caddy_build": _read(CADDY_BUILD),
         "controller_build": _read(CONTROLLER_BUILD),
         "website_certificate_days_left": certificate_days,
         "devices": db.count_devices(),

@@ -6,7 +6,8 @@
 # whether a prebuilt binary is fine to keep or worth rebuilding ourselves.
 #
 # Checks AirBound's own frp build (frps runs on the relays, facing the
-# internet) and the binaries inside the published add-on image.
+# internet), its own Caddy build for the hosted relay's website, and the
+# binaries inside the published add-on image.
 name: Reachable Go vulnerabilities
 
 on:
@@ -19,8 +20,11 @@ permissions:
 
 env:
   FRP_VERSION: "0.72.0"
-  FRP_RELEASE: "frp-v0.72.0-airbound1"  # our own build, what the relays run
-  FRP_SHA256: "f9224a8ed735cc8a3d78fe3cd37e9b0a7c77ed285207763efb47e3a532d6f243"  # linux_amd64
+  FRP_RELEASE: "frp-v0.72.0-airbound2"  # our own build, what the relays run
+  FRP_SHA256: "74a228797e9796faaf6b60bab88cdde957f7269eb64c958b0568532a4105c105"  # linux_amd64
+  CADDY_VERSION: "2.11.9"
+  CADDY_RELEASE: "caddy-v2.11.9-airbound1"  # our own build, the hosted relay's website
+  CADDY_SHA256: "e894072d3fae21f325c57cf9ec0fb6e4124f061446a1f69b65ec386f36f06d1b"  # linux_amd64
 
 jobs:
   govulncheck:
@@ -41,6 +45,9 @@ jobs:
           echo "${FRP_SHA256}  frp.tgz" | sha256sum -c -
           tar -xzf frp.tgz
           cp "frp_${FRP_VERSION}_linux_amd64/frps" bin/frps
+          curl -fsSL -o caddy.tgz "https://github.com/${{ github.repository }}/releases/download/${CADDY_RELEASE}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          echo "${CADDY_SHA256}  caddy.tgz" | sha256sum -c -
+          tar -xzf caddy.tgz -C bin caddy && mv bin/caddy bin/caddy-relay
           version=$(sed -n 's/^version: "\(.*\)"$/\1/p' airbound/config.yaml)
           image="ghcr.io/${{ github.repository_owner }}/amd64-addon-airbound:${version}"
           docker pull -q "$image"
@@ -52,9 +59,9 @@ jobs:
         run: |
           {
             echo "## Reachable Go vulnerabilities"
-            echo "frp ${FRP_VERSION} (${FRP_RELEASE}) and the binaries in \`${IMAGE}\`."
+            echo "frp ${FRP_VERSION} (${FRP_RELEASE}), the relay website's Caddy (${CADDY_RELEASE}) and the binaries in \`${IMAGE}\`."
           } >> "$GITHUB_STEP_SUMMARY"
-          for b in frps frpc caddy crowdsec cscli; do
+          for b in frps caddy-relay frpc caddy crowdsec cscli; do
             echo "::group::$b"
             # Exit code 3 means vulnerabilities were found; that's a result, not a failure.
             "$(go env GOPATH)/bin/govulncheck" -mode binary "bin/$b" > "report-$b.txt" 2>&1 || true

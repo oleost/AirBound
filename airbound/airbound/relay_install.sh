@@ -7,7 +7,7 @@ TOKEN="__TOKEN__"
 CONTROL_PORT="__CONTROL_PORT__"
 PUBLIC_PORT="__PUBLIC_PORT__"
 VERSION="0.72.0"
-RELEASE="frp-v0.72.0-airbound1"  # frp built from source with the newest Go by AirBound's GitHub Actions
+RELEASE="frp-v0.72.0-airbound2"  # frp built from source with the newest Go by AirBound's GitHub Actions
 
 fail() { echo "AirBound relay: $1" >&2; exit 1; }
 
@@ -16,8 +16,8 @@ command -v systemctl >/dev/null 2>&1 || fail "this server needs systemd (Debian 
 command -v curl >/dev/null 2>&1 || fail "curl is missing. Install it with: apt install -y curl"
 
 case "$(uname -m)" in
-  x86_64 | amd64) ARCH=amd64; SHA=f9224a8ed735cc8a3d78fe3cd37e9b0a7c77ed285207763efb47e3a532d6f243 ;;
-  aarch64 | arm64) ARCH=arm64; SHA=721c4866938d54ad266f4b8e49cfae615af71651043c1abe1625ce2437e50708 ;;
+  x86_64 | amd64) ARCH=amd64; SHA=74a228797e9796faaf6b60bab88cdde957f7269eb64c958b0568532a4105c105 ;;
+  aarch64 | arm64) ARCH=arm64; SHA=ca84e4fcc8c29dbf81ecb9529c14e9f344cbddfada6150be104e0b16818f89ab ;;
   *) fail "unsupported processor: $(uname -m)" ;;
 esac
 

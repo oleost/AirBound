@@ -16,10 +16,10 @@ FROM python:3.13.18-alpine3.24@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b1
 ARG BUILD_ARCH=amd64
 ARG FRP_VERSION=0.72.0
 # frp built from source with the newest Go by .github/workflows/frp.yaml
-ARG FRP_RELEASE=frp-v0.72.0-airbound1
+ARG FRP_RELEASE=frp-v0.72.0-airbound2
 RUN case "$BUILD_ARCH" in \
-      amd64) ARCH=amd64; SHA=f9224a8ed735cc8a3d78fe3cd37e9b0a7c77ed285207763efb47e3a532d6f243 ;; \
-      aarch64) ARCH=arm64; SHA=721c4866938d54ad266f4b8e49cfae615af71651043c1abe1625ce2437e50708 ;; \
+      amd64) ARCH=amd64; SHA=74a228797e9796faaf6b60bab88cdde957f7269eb64c958b0568532a4105c105 ;; \
+      aarch64) ARCH=arm64; SHA=ca84e4fcc8c29dbf81ecb9529c14e9f344cbddfada6150be104e0b16818f89ab ;; \
       *) echo "unsupported arch $BUILD_ARCH" && exit 1 ;; \
     esac \
     && wget -q -O /tmp/frp.tgz "https://github.com/oleost/AirBound/releases/download/${FRP_RELEASE}/frp_${FRP_VERSION}_linux_${ARCH}.tar.gz" \

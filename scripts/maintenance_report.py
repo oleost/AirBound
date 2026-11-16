@@ -28,7 +28,7 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 NOW = datetime.datetime.now(datetime.UTC)
 ISSUE_TITLE = "Weekly maintenance report"
 SCAN_MAX_AGE_DAYS = 7
-FRP_BUILD_MAX_AGE_DAYS = 30
+BUILD_MAX_AGE_DAYS = 30  # our frp and Caddy builds
 
 
 def http(url: str, token: str = "", accept: str = "application/vnd.github+json", data: bytes | None = None, method: str | None = None):
@@ -73,7 +73,11 @@ def pinned() -> dict:
             ".github/workflows/govulncheck.yaml": find(r'FRP_RELEASE: "([^"]+)"', ".github/workflows/govulncheck.yaml"),
         },
         "caddy_addon": find(r"FROM caddy:([\d.]+)-builder", "airbound/Dockerfile"),
-        "caddy_relay": find(r'^CADDY_VERSION="([^"]+)"', "relay-server/install.sh"),
+        "caddy_relay": find(r'^\s*CADDY_VERSION: "([^"]+)"', ".github/workflows/caddy.yaml"),
+        "caddy_relay_release": {
+            "relay-server/install.sh": find(r'^CADDY_RELEASE="([^"]+)"', "relay-server/install.sh"),
+            ".github/workflows/govulncheck.yaml": find(r'CADDY_RELEASE: "([^"]+)"', ".github/workflows/govulncheck.yaml"),
+        },
         "bouncer": find(r"caddy-crowdsec-bouncer/http@(v[\d.]+)", "airbound/Dockerfile"),
         "caddy_dns": find(r"caddy-dns/cloudflare@(v[\d.]+)", "airbound/Dockerfile"),
         "crowdsec": find(r"FROM crowdsecurity/crowdsec:(v[\d.]+)", "airbound/Dockerfile"),
@@ -103,14 +107,15 @@ def newest_python_alpine(series: str) -> str:
     return max(tags, key=version_key) if tags else "?"
 
 
-def our_frp_build(tag: str) -> tuple[float | None, str]:
-    """(age in days, Go version) of our frp release."""
+def our_build(tag: str) -> tuple[float | None, str]:
+    """(age in days, Go version) of one of our frp or Caddy releases."""
     try:
         data = gh(f"repos/{REPO}/releases/tags/{tag}")
     except urllib.error.HTTPError:
         return None, "?"
     go = re.search(r"go(\d+\.\d+(?:\.\d+)?)", data.get("body") or "")
-    return days_since(data["created_at"]), go.group(1) if go else "?"
+    # created_at is the date of the tagged commit (main), not of the build
+    return days_since(data["published_at"]), go.group(1) if go else "?"
 
 
 def workflow_last_run(file: str) -> dict | None:
@@ -199,21 +204,32 @@ def build_report() -> str:
         actions.append(f"frp release isn't the same everywhere: {p['frp_release']}")
     frp_release = next(iter(releases))
     frp_tag, frp_date = latest_release("fatedier/frp")
-    age, built_with = our_frp_build(frp_release)
+    age, built_with = our_build(frp_release)
     go = go_stable()
     if version_key(frp_tag) > version_key(p["frp"]):
         actions.append(f"**frp {frp_tag}** is out (we build {p['frp']}). Update FRP_VERSION/FRP_COMMIT in frp.yaml.")
     if age is None:
         actions.append(f"Our frp release {frp_release} wasn't found.")
-    elif age > FRP_BUILD_MAX_AGE_DAYS or version_key(built_with) < version_key(go):
+    elif age > BUILD_MAX_AGE_DAYS or version_key(built_with) < version_key(go):
         actions.append(f"Rebuild frp: our build is {age:.0f} days old, made with Go {built_with}; Go {go} is current.")
     rows.append(f"| frp | {p['frp']} ({frp_release}, Go {built_with}, {age or 0:.0f} days old) | {frp_tag} ({frp_date[:10]}), Go {go} |")
+
+    caddy_releases = set(p["caddy_relay_release"].values())
+    if len(caddy_releases) != 1:
+        actions.append(f"Caddy release for the relay website isn't the same everywhere: {p['caddy_relay_release']}")
+    caddy_release = next(iter(caddy_releases))
+    caddy_age, caddy_go = our_build(caddy_release)
+    if caddy_age is None:
+        actions.append(f"Our Caddy release {caddy_release} wasn't found.")
+    elif caddy_age > BUILD_MAX_AGE_DAYS or version_key(caddy_go) < version_key(go):
+        actions.append(f"Rebuild Caddy for the relay website: our build is {caddy_age:.0f} days old, made with Go {caddy_go}; Go {go} is current. Raise BUILD in caddy.yaml.")
 
     for name, pin, repo in (("Caddy (add-on)", p["caddy_addon"], "caddyserver/caddy"), ("Caddy (relay website)", p["caddy_relay"], "caddyserver/caddy"), ("CrowdSec", p["crowdsec"], "crowdsecurity/crowdsec")):
         tag, date = latest_release(repo)
         if version_key(tag) > version_key(pin):
             actions.append(f"**{name}**: {tag} is out (we use {pin}).")
-        rows.append(f"| {name} | {pin} | {tag} ({date[:10]}) |")
+        used = f"{pin} ({caddy_release}, Go {caddy_go}, {caddy_age or 0:.0f} days old)" if name == "Caddy (relay website)" else pin
+        rows.append(f"| {name} | {used} | {tag} ({date[:10]}) |")
     for name, pin, repo in (("Caddy CrowdSec bouncer", p["bouncer"], "hslatman/caddy-crowdsec-bouncer"), ("Caddy Cloudflare DNS", p["caddy_dns"], "caddy-dns/cloudflare")):
         tag = latest_tag(repo)
         if tag != "?" and version_key(tag) > version_key(pin):
@@ -275,6 +291,8 @@ def build_report() -> str:
             actions.append(f"airbound.dev's certificate expires in {ops['website_certificate_days_left']} days.")
         if ops.get("frp_build") != frp_release:
             actions.append(f"The relay runs {ops.get('frp_build') or 'unknown frp'}, not {frp_release}: deploy the relay.")
+        if ops.get("caddy_build") != caddy_release:
+            actions.append(f"The relay's website runs {ops.get('caddy_build') or 'an unknown Caddy'}, not {caddy_release}: deploy the relay.")
         for problem in ops.get("problems") or []:
             actions.append(f"Relay: {problem}")
         relay_lines += [f"- {k.replace('_', ' ')}: {v}" for k, v in ops.items() if k != "problems"]

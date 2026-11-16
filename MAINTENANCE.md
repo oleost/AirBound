@@ -10,7 +10,7 @@ from a commit to users and the live relay.
 | --- | --- | --- |
 | Add-on base image (Python, Alpine) | `airbound/Dockerfile` (tag + digest); `apk upgrade` runs in every build | Dependabot, maintenance report, Trivy |
 | Python packages | `airbound/requirements.txt`, `relay-server/controller/requirements.txt`, `requirements-dev.txt` | Dependabot, pip-audit |
-| Caddy and its modules | `airbound/Dockerfile` (add-on), `relay-server/install.sh` (relay website, with checksums) | Maintenance report, Trivy, govulncheck |
+| Caddy and its modules | `airbound/Dockerfile` (add-on); for the relay website, `.github/workflows/caddy.yaml` builds our release and `relay-server/install.sh` and `.github/workflows/govulncheck.yaml` pin it | Maintenance report, Trivy, govulncheck |
 | CrowdSec | `airbound/Dockerfile` (tag + digest) | Dependabot, maintenance report, Trivy, govulncheck |
 | frp | `.github/workflows/frp.yaml` (upstream commit) builds our release; four places pin that release and its checksums (see below) | Maintenance report, govulncheck |
 | GitHub Actions | Each workflow, by commit SHA | Dependabot |
@@ -35,7 +35,7 @@ needs a decision under **Action needed**.
 - **Weekly (automatic):** read the report email. Nothing under "Action needed": nothing to do.
 - **Monthly (about 30 minutes):** work through the open items:
   - Merge Dependabot pull requests on `next` once its tests pass.
-  - Rebuild frp with the newest Go, and a newer frp if there is one (see below).
+  - Rebuild frp and the relay website's Caddy with the newest Go, and newer versions if there are any (see below).
   - Update Caddy, its modules, CrowdSec and the Python base image when newer ones are out.
   - Update the test VM to the newest Home Assistant (`python scripts/update_test_vm.py`) and run the test round. The test VM stays on Home Assistant's stable channel, since it tests what users run; the script moves it back if it finds it on another.
 - **When Home Assistant has a beta out** (the report says so, about a week before each monthly release): run `python scripts/beta.py`. A failure doesn't block other releases, but fix it and release before HA's release day, or report it to Home Assistant if the fault is theirs.
@@ -107,7 +107,7 @@ Not reported upstream; we handle them ourselves. Check after each Home Assistant
 
 **Caddy (add-on):** change the builder tag and digest and the module versions in `airbound/Dockerfile`. Pin newer dependencies with `--replace`.
 
-**Caddy (relay website):** change `CADDY_VERSION` and both checksums in `relay-server/install.sh`.
+**Caddy (relay website)** (our own build, like frp, since the official binaries keep their release day's Go): in `.github/workflows/caddy.yaml`, set `CADDY_VERSION` and raise `BUILD`, then push to `next`, and the release `caddy-v<version>-airbound<N>` is built. Put the release name, version and the two checksums from its `sha256sums.txt` in `relay-server/install.sh`, and the release name and amd64 checksum in `.github/workflows/govulncheck.yaml`.
 
 **CrowdSec:** change the tag and digest in `airbound/Dockerfile`.
 

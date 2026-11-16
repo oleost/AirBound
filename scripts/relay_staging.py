@@ -132,7 +132,7 @@ def main() -> None:
         ops = vps.sh("sudo sh -c '. /etc/airbound-controller/controller.env; curl -s -H \"Authorization: Bearer $OPS_TOKEN\" http://127.0.0.1:7500/api/v1/ops'", check=False)
         try:
             data = json.loads(ops)
-            check("health endpoint", bool(data.get("frp_build")), f"frp {data.get('frp_build')}, controller {str(data.get('controller_build')).splitlines()[0]}")
+            check("health endpoint", bool(data.get("frp_build")) and bool(data.get("caddy_build")), f"frp {data.get('frp_build')}, caddy {data.get('caddy_build')}, controller {str(data.get('controller_build')).splitlines()[0]}")
         except ValueError:
             check("health endpoint", False, ops[:200])
 

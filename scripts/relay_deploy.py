@@ -25,7 +25,7 @@ from testenv import Remote, env, relay_tarball
 
 UNITS = "airbound-controller airbound-hub airbound-web airbound-site"
 BACKUP_PATHS = ("/opt/airbound-controller/airbound_relay /opt/airbound-controller/BUILD /etc/airbound-hub /usr/local/bin/airbound-hub "
-                "/usr/local/bin/airbound-site /usr/local/bin/airbound-web /usr/local/lib/airbound-frp-build /etc/systemd/system/airbound-*.service "
+                "/usr/local/bin/airbound-site /usr/local/bin/airbound-web /usr/local/lib/airbound-frp-build /usr/local/lib/airbound-caddy-build /etc/systemd/system/airbound-*.service "
                 "/etc/airbound-firewall.nft /etc/ssh/sshd_config.d/10-airbound.conf")
 # Stopping the unit (not just deleting its table) lets the installer's "enable --now" load the firewall again.
 def safety_net(seconds: int = 600) -> str:
@@ -103,7 +103,7 @@ def deploy(remote: Remote, domain: str | None, member_url: str | None = None, si
         return reason
 
     print(f"ROLLING BACK: {reason}")
-    remote.run(f"cd / && tar xzf /var/backups/airbound/{stamp}.tgz && systemctl daemon-reload && "
+    remote.run(f"rm -f /usr/local/lib/airbound-caddy-build && cd / && tar xzf /var/backups/airbound/{stamp}.tgz && systemctl daemon-reload && "
                f"systemctl restart airbound-firewall {UNITS}", check=False)
     ok, after = wait_healthy(remote, domain, member_url)
     remote.run("systemctl stop airbound-deploy-safety.timer 2>/dev/null; true")
