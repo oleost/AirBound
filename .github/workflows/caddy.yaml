@@ -1,0 +1,88 @@
+# Builds Caddy for the hosted relay's website (airbound-web) from source with
+# the newest Go and current golang.org/x, klauspost/compress and go-jose
+# libraries, and publishes the archives as a release of this repository.
+#
+# Why: the official Caddy binaries keep the Go version and libraries of their
+# release day until the next Caddy release. Caddy 2.11.9 came with Go 1.27.3,
+# and govulncheck found reachable vulnerabilities in it with fixes only in
+# newer Go and libraries (an HTTP/1 server crash among them). The website faces
+# the internet, so we build it ourselves, like frp (see frp.yaml).
+#
+# The add-on's Caddy is built in airbound/Dockerfile instead, with its modules.
+# The archives hold `caddy` and Caddy's LICENSE; relay-server/install.sh pins
+# the release and the checksums.
+name: Build Caddy (relay website)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [next]
+    paths: [".github/workflows/caddy.yaml"]
+
+permissions:
+  contents: read
+
+env:
+  CADDY_VERSION: "2.11.9"
+  BUILD: "airbound1"
+  XCADDY_VERSION: "v0.4.7"
+  # Libraries raised to their newest release; Caddy's own choice otherwise.
+  LIBRARIES: "golang.org/x/net golang.org/x/crypto golang.org/x/text golang.org/x/sys github.com/klauspost/compress github.com/go-jose/go-jose/v4"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # create the release
+    steps:
+      - name: Already built?
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "caddy-v${CADDY_VERSION}-${BUILD}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::notice::caddy-v${CADDY_VERSION}-${BUILD} exists; raise BUILD in this file to build again."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.existing.outputs.skip != 'true'
+        with:
+          go-version: stable
+          cache: false
+      - name: Build
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          set -eu
+          go install "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}"
+          replaces=""
+          for m in $LIBRARIES; do
+            v=$(go list -m -f '{{.Version}}' "$m@latest")
+            echo "$m $v"
+            replaces="$replaces --replace $m=$m@$v"
+          done
+          license="$(go mod download -json "github.com/caddyserver/caddy/v2@v${CADDY_VERSION}" | jq -r .Dir)/LICENSE"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            dir="caddy_${CADDY_VERSION}_linux_${arch}"
+            mkdir -p "work/$dir"
+            # shellcheck disable=SC2086  # $replaces is a list of arguments
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch "$(go env GOPATH)/bin/xcaddy" build "v${CADDY_VERSION}" $replaces --output "work/$dir/caddy"
+            cp "$license" "work/$dir/LICENSE"
+            tar -C "work/$dir" -czf "dist/$dir.tar.gz" caddy LICENSE
+          done
+          cd dist && sha256sum ./*.tar.gz | sed 's| \./| |' > sha256sums.txt && cat sha256sums.txt
+          go version > ../work/go-version.txt
+      - name: govulncheck on the result
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$(go env GOPATH)/bin/govulncheck" -mode binary "work/caddy_${CADDY_VERSION}_linux_amd64/caddy" | tee dist/govulncheck.txt || true
+      - name: Publish release
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="caddy-v${CADDY_VERSION}-${BUILD}"
+          notes="Caddy ${CADDY_VERSION} built from source with xcaddy by GitHub Actions with $(cat work/go-version.txt) and current golang.org/x, klauspost/compress and go-jose libraries, no extra modules. Used by the hosted relay's website. See .github/workflows/caddy.yaml."
+          gh release create "$tag" dist/*.tar.gz dist/sha256sums.txt dist/govulncheck.txt \
+            --repo "${{ github.repository }}" --title "$tag" --notes "$notes" --latest=false

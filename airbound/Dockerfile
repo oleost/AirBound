@@ -4,6 +4,7 @@ RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.15.0 \
     --replace golang.org/x/net=golang.org/x/net@v0.62.0 \
+    --replace golang.org/x/crypto=golang.org/x/crypto@v0.59.0 \
     --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.9 \
     --replace github.com/klauspost/compress=github.com/klauspost/compress@v1.20.4 \
     --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@v5.4.0 \
