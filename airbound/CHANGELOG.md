@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.8
+
+- Security updates to frp and Caddy, which carry and serve your address. Both are now built with the newest Go, which fixes a fault that could let someone on the internet stop them.
+- **If you run your own relay server:** open the **Relay server** step in AirBound and run its command on the server again to get the new frp there too. Your connection keeps working while you wait.
+- With the hosted relay, or through your router, there is nothing you have to do.
+
 ## 0.15.7
 
 - CrowdSec now finds its files for looking up where an address is from. They were stored in the wrong folder, so that lookup never worked; blocking itself was not affected.
