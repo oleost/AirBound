@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.9
+
+- AirBound is no longer marked as an early, experimental release. Nothing changes in how it works, and there is nothing you have to do.
+
 ## 0.15.8
 
 - Security updates to frp and Caddy, which carry and serve your address. Both are now built with the newest Go, which fixes a fault that could let someone on the internet stop them.
