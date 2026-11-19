@@ -46,7 +46,13 @@ echo "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 # Wait for the automatic updates if they hold the package lock, instead of stopping halfway.
 apt-get -o DPkg::Lock::Timeout=600 update -qq
-apt-get -o DPkg::Lock::Timeout=600 install -y -qq python3-venv openssl curl ca-certificates nftables >/dev/null
+apt-get -o DPkg::Lock::Timeout=600 install -y -qq python3-venv openssl curl ca-certificates nftables unattended-upgrades >/dev/null
+
+# Security updates install by themselves, also on a minimal Debian that came without
+# them; a kernel or library fix needs a restart, done at night when one is due.
+# The same settings as the add-on's own-server hardening (vps_harden.sh).
+printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
+printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "04:30";\n' > /etc/apt/apt.conf.d/52airbound-reboot
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT

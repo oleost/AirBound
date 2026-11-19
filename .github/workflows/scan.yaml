@@ -3,7 +3,7 @@
 # Security tab and the run summary; they never block a release, so an upstream
 # problem with no fix yet can't hold back an AirBound fix.
 #
-# Runs after every image build, and weekly, since new vulnerabilities appear
+# Runs after every image build, and daily, since new vulnerabilities appear
 # without any change here.
 name: Scan add-on images
 
@@ -12,7 +12,7 @@ on:
     workflows: ["Build add-on images"]
     types: [completed]
   schedule:
-    - cron: "17 5 * * 1"  # Mondays
+    - cron: "17 5 * * *"  # daily; vuln-alert.yaml emails new findings
   workflow_dispatch:
 
 permissions:

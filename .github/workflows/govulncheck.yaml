@@ -13,7 +13,7 @@ name: Reachable Go vulnerabilities
 on:
   workflow_dispatch:
   schedule:
-    - cron: "37 5 * * 1"  # Mondays, after the image scan
+    - cron: "37 5 * * *"  # daily, after the image scan; vuln-alert.yaml emails new findings
 
 permissions:
   contents: read

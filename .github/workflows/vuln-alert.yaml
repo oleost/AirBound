@@ -1,0 +1,30 @@
+# Daily vulnerability alert: a comment on the "Security alerts" issue (GitHub
+# emails it) as soon as the daily Trivy scan or govulncheck finds something it
+# hasn't reported before. Runs after both. See scripts/vuln_alert.py.
+name: Vulnerability alert
+
+on:
+  schedule:
+    - cron: "15 6 * * *"  # daily, after scan.yaml (05:17) and govulncheck.yaml (05:37)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alert:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write  # the alert issue, its comments and the reported list
+      security-events: read  # open Trivy findings
+      actions: read  # the govulncheck run and its reports
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Alert on new findings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/vuln_alert.py --post

@@ -18,20 +18,22 @@ from a commit to users and the live relay.
 | Home Assistant | Not ours; changes monthly, with a beta about a week before | Maintenance report, test VM, beta VM |
 | Secrets | `/etc/airbound-controller` on the relay; repository secret `OPS_TOKEN` | Patreon's creator token refreshes itself; the Cloudflare token and the GitHub token for the sponsor list (`read:user`, in `github.env`) have their own expiry |
 
-## What watches automatically (every Monday)
+## What watches automatically
 
 | Time (UTC) | Workflow | What it does |
 | --- | --- | --- |
 | Mondays | Dependabot | Pull requests against `next` for Actions, Docker base images and Python packages |
-| 05:17 | `scan.yaml` | Trivy scans both images; findings go to the Security tab |
-| 05:37 | `govulncheck.yaml` | Which Go vulnerabilities the bundled programs can actually reach |
-| 06:45 | `maintenance.yaml` | Pinned versions against the newest, the scans, Dependabot, and the relay's health (`/api/v1/ops`), as a comment on the "Weekly maintenance report" issue. GitHub emails it. |
+| Daily 05:17 | `scan.yaml` | Trivy scans both images; findings go to the Security tab |
+| Daily 05:37 | `govulncheck.yaml` | Which Go vulnerabilities the bundled programs can actually reach |
+| Daily 06:15 | `vuln-alert.yaml` | A comment on the "Security alerts" issue, which GitHub emails, as soon as govulncheck finds something reachable or Trivy something high or critical that it hasn't reported before. Each finding once; the weekly report still lists all that are open. |
+| Mondays 06:45 | `maintenance.yaml` | Pinned versions against the newest, the scans, Dependabot, and the relay's health (`/api/v1/ops`), as a comment on the "Weekly maintenance report" issue. GitHub emails it. |
 
 Trivy also runs after every image build. The report puts everything that
 needs a decision under **Action needed**.
 
 ## The routine
 
+- **When a "Security alerts" email comes:** look at the finding the same day. Reachable in frps or the relay's Caddy means the relay is exposed: rebuild with the fixed Go or version (see below) and release. In the add-on image, update the part it names in the next release.
 - **Weekly (automatic):** read the report email. Nothing under "Action needed": nothing to do.
 - **Monthly (about 30 minutes):** work through the open items:
   - Merge Dependabot pull requests on `next` once its tests pass.
