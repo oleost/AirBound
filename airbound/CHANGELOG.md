@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.10
+
+- **If you run your own relay server on Debian:** its automatic updates now also install Debian's stable updates, such as time zone fixes, without waiting for the next Debian point release. Run the command from the **Relay server** step on the server again whenever you like to get this; nothing breaks if you don't.
+- With the hosted relay, or through your router, there is nothing you have to do.
+
 ## 0.15.9
 
 - AirBound is no longer marked as an early, experimental release. Nothing changes in how it works, and there is nothing you have to do.

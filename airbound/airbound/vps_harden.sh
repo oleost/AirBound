@@ -152,5 +152,8 @@ harden_updates() {
   printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
   # A kernel or library fix only takes effect after a restart; do it at night, when needed.
   printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "04:30";\n' > /etc/apt/apt.conf.d/52airbound-reboot
+  # Debian's stable-updates as well (time zones and the like, ahead of the point release);
+  # the list adds to Debian's own, and Ubuntu matches nothing.
+  printf 'Unattended-Upgrade::Origins-Pattern {\n  "origin=Debian,codename=${distro_codename}-updates";\n};\n' > /etc/apt/apt.conf.d/51airbound-origins
   echo "Updates: security updates install automatically, with a restart at 04:30 when one needs it."
 }

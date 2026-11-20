@@ -53,6 +53,9 @@ apt-get -o DPkg::Lock::Timeout=600 install -y -qq python3-venv openssl curl ca-c
 # The same settings as the add-on's own-server hardening (vps_harden.sh).
 printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
 printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "04:30";\n' > /etc/apt/apt.conf.d/52airbound-reboot
+# Debian's stable-updates as well: fixes such as time zones, ahead of the point release
+# that installs automatically anyway. The list adds to Debian's own; Ubuntu matches nothing.
+printf 'Unattended-Upgrade::Origins-Pattern {\n  "origin=Debian,codename=${distro_codename}-updates";\n};\n' > /etc/apt/apt.conf.d/51airbound-origins
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
