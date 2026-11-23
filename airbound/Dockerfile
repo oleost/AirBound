@@ -1,5 +1,5 @@
 # Base images are pinned by digest (multi-arch index), so a re-pointed tag can't change what we build on.
-FROM caddy:2.11.9-builder@sha256:345264d8c6b50f44f4a4d507d4e6b6bcae40eef2f210d70f76e717fd8cc31baf AS caddy-build
+FROM caddy:2.11.9-builder@sha256:f9beaa5ddbe7df6f26ebbcf9cbf44e05a1917b9bba464f0c3229038d7e2e6e13 AS caddy-build
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare@v0.2.4 \
     --with github.com/hslatman/caddy-crowdsec-bouncer/http@v0.15.0 \
