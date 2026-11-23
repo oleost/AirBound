@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.11
+
+- Caddy, which serves your address, is built from the newest Caddy build image, with its latest fixes. There is nothing you have to do.
+
 ## 0.15.10
 
 - **If you run your own relay server on Debian:** its automatic updates now also install Debian's stable updates, such as time zone fixes, without waiting for the next Debian point release. Run the command from the **Relay server** step on the server again whenever you like to get this; nothing breaks if you don't.

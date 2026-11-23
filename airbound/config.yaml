@@ -1,5 +1,5 @@
 name: AirBound
-version: "0.15.10"
+version: "0.15.11"
 slug: airbound
 description: "Secure remote access to Home Assistant, with enforced two-step login"
 url: https://github.com/oleost/AirBound
